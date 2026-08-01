@@ -1,15 +1,8 @@
 # Knox PV9000 Dashboard
 
-A lightweight read-only web dashboard for **Knox Krypton PV9000** inverters. It reads live data from the same ShineMonitor cloud API used by the Knox Android app (`android.shinemonitor.com`).
+Live read-only solar dashboard for **Knox Krypton PV9000** inverters.
 
-## Features
-
-- ☀️ PV Power, 🏠 Load Power, ⚡ Grid Power, 🟢 Inverter Status
-- Auto-refresh every 3 seconds
-- Connection via Datalogger ID (with automatic credential detection)
-- Read-only — never sends commands to the inverter
-
-## Quick Start
+## Run on your computer
 
 ```bash
 npm install
@@ -18,32 +11,62 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## How It Works
+---
 
-1. **Connect** — Enter your datalogger ID (PN). If the API accepts PN-only auth, it connects automatically. Otherwise, enter your Knox app username and password.
-2. **Dashboard** — Live metrics refresh every 3 seconds from `webQueryDeviceEnergyFlowEs` and device status endpoints.
-3. **Authentication** — Token, sign, and salt are generated server-side per ShineMonitor API spec. They are never exposed to the browser.
+## Deploy on Vercel (simple — for non-developers)
 
-## Tech Stack
+Follow these steps once. After that, every code update redeploys automatically.
 
-- Next.js + React + TypeScript
-- Express (custom server for `/api/*` routes)
-- Axios + Tailwind CSS
+### Step 1 — Put the project on GitHub
 
-## API Routes
+1. Create a free account at [github.com](https://github.com) if you don’t have one.
+2. Create a **new repository** (keep it private if you prefer).
+3. Upload this project folder to that repository  
+   (GitHub website: **Add file → Upload files**, or use GitHub Desktop).
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/connect` | POST | Connect with `{ pn, username?, password? }` |
-| `/api/live` | GET | Live inverter data |
-| `/api/status` | GET | Connection status |
-| `/api/disconnect` | POST | Clear session |
+### Step 2 — Connect Vercel
 
-## Project Structure
+1. Go to [vercel.com](https://vercel.com) and sign up (use **Continue with GitHub**).
+2. Click **Add New → Project**.
+3. Select your GitHub repository.
+4. Vercel will detect Next.js — **don’t change the settings**.
+5. Before clicking Deploy, open **Environment Variables** and add:
 
-```
-lib/knox.ts          # ShineMonitor API client (auth, signing, live data)
-server.ts            # Express + Next.js custom server
-components/          # Connection screen & dashboard UI
-app/                 # Next.js app router pages
-```
+   | Name | Value |
+   |------|--------|
+   | `SESSION_SECRET` | Any long random text, e.g. `my-knox-solar-secret-2026-abc123xyz` |
+
+   (This keeps your login session secure on the server.)
+
+6. Click **Deploy** and wait ~2 minutes.
+
+### Step 3 — Open your site
+
+Vercel gives you a link like `https://your-project.vercel.app`.
+
+- Open it on your phone in **Chrome**.
+- Log in with your Knox machine number, username, and password.
+- Tap **Install app** (or Chrome menu → **Install app**) to add it to your home screen.
+
+### Custom domain (optional)
+
+In Vercel: **Project → Settings → Domains** → add your domain and follow the DNS steps shown there.
+
+---
+
+## Login details
+
+| Field | What to enter |
+|-------|----------------|
+| Machine number | From your inverter label or Knox app (e.g. `E50000251815378565`) |
+| Username | Your **Knox app login** (e.g. `ahsanullah786`) — not the machine number |
+| Password | Same password as the Knox app |
+
+---
+
+## What this app does
+
+- Shows solar power, home usage, grid status, and today’s energy
+- Updates every 3 seconds
+- Read-only — never sends commands to your inverter
+- Works as a phone app (PWA) after install

@@ -39,7 +39,12 @@ function HomeContent() {
 
   return (
     <Dashboard
-      onDisconnect={() => {
+      onDisconnect={async () => {
+        try {
+          await fetch("/api/disconnect", { method: "POST", cache: "no-store" });
+        } catch {
+          /* ignore */
+        }
         sessionStorage.removeItem("knox_pn");
         setConnected(false);
       }}

@@ -528,6 +528,28 @@ export function disconnect(): void {
   device = null;
 }
 
+/** Serializable server state for cookie storage (Vercel / serverless). */
+export interface KnoxPersistedState {
+  session: Session;
+  connection: ConnectionConfig;
+  device: DeviceInfo;
+}
+
+export function exportKnoxState(): KnoxPersistedState | null {
+  if (!session || !connection || !device) return null;
+  return {
+    session: { ...session },
+    connection: { ...connection },
+    device: { ...device },
+  };
+}
+
+export function restoreKnoxState(state: KnoxPersistedState): void {
+  session = { ...state.session };
+  connection = { ...state.connection };
+  device = { ...state.device };
+}
+
 /** Fetch live inverter metrics — always hits Knox cloud, never cached. */
 export async function getLiveData(): Promise<LiveData> {
   if (!connection || !device) {
