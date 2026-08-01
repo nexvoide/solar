@@ -1,0 +1,277 @@
+@import "tailwindcss";
+
+:root {
+  --bg-deep: #070b12;
+  --bg-mid: #0d1520;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --border-glow: rgba(251, 191, 36, 0.25);
+  --text-primary: #f8fafc;
+  --text-muted: #94a3b8;
+  --solar: #fbbf24;
+  --solar-glow: rgba(251, 191, 36, 0.35);
+  --home: #38bdf8;
+  --grid: #a78bfa;
+  --live: #34d399;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 1.75rem;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-urdu: var(--font-urdu), "Noto Nastaliq Urdu", "Segoe UI", Arial, sans-serif;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  min-height: 100dvh;
+}
+
+.font-urdu {
+  font-family: var(--font-urdu);
+}
+
+[dir="rtl"] .font-urdu {
+  line-height: 1.85;
+}
+
+[dir="ltr"] body {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+button,
+input,
+select {
+  touch-action: manipulation;
+}
+
+/* Ambient page background */
+.solar-bg {
+  position: relative;
+  min-height: 100dvh;
+  background: var(--bg-deep);
+  overflow-x: hidden;
+}
+
+.solar-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(251, 191, 36, 0.14), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(56, 189, 248, 0.1), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(52, 211, 153, 0.08), transparent 55%);
+  z-index: 0;
+}
+
+.solar-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Glass card system */
+.glass {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius-2xl);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
+}
+
+.glass:hover {
+  background: var(--surface-hover);
+}
+
+.glass-pulse {
+  animation: cardPulse 0.7s ease-out;
+}
+
+@keyframes cardPulse {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
+  70% { box-shadow: 0 0 0 12px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+
+.glass-refreshing {
+  opacity: 0.88;
+}
+
+/* Live indicator */
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 12px var(--live);
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* Value animation */
+.value-flash {
+  animation: valueFlash 0.45s ease-out;
+}
+
+@keyframes valueFlash {
+  0% { color: #6ee7b7; transform: scale(1.04); }
+  100% { color: inherit; transform: scale(1); }
+}
+
+/* Energy flow */
+.flow-path {
+  stroke-dasharray: 8 6;
+  animation: flowDash 1.2s linear infinite;
+}
+
+@keyframes flowDash {
+  to { stroke-dashoffset: -28; }
+}
+
+.flow-node {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.flow-node-active {
+  box-shadow: 0 0 30px var(--solar-glow);
+}
+
+/* Connect screen mesh */
+.connect-mesh {
+  background:
+    radial-gradient(ellipse 100% 80% at 50% 0%, rgba(251, 191, 36, 0.18), transparent 60%),
+    radial-gradient(ellipse 80% 60% at 100% 50%, rgba(52, 211, 153, 0.12), transparent 50%),
+    linear-gradient(180deg, #0a0f18 0%, #070b12 100%);
+}
+
+/* Input styling */
+.input-solar {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1.5px solid var(--border-soft);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 1rem 1.25rem;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-solar::placeholder {
+  color: #64748b;
+}
+
+.input-solar:focus {
+  border-color: rgba(251, 191, 36, 0.5);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.12);
+}
+
+/* Primary CTA */
+.btn-solar {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #ea580c 100%);
+  color: #1c1917;
+  font-weight: 700;
+  border: none;
+  border-radius: 1rem;
+  padding: 1.1rem 1.5rem;
+  font-size: 1.1rem;
+  box-shadow: 0 8px 32px rgba(251, 191, 36, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-solar:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 40px rgba(251, 191, 36, 0.4);
+}
+
+.btn-solar:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-solar:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Scrollbar hide on mobile horizontal sections */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Knox app theme (mint green, isometric home) ── */
+.knox-app {
+  min-height: 100dvh;
+  background: linear-gradient(180deg, #1e2433 0%, #151a26 40%, #12161f 100%);
+}
+
+.knox-bubble {
+  background: rgba(35, 42, 58, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.knox-card {
+  background: rgba(38, 45, 62, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.knox-bottom-nav > div {
+  background: rgba(28, 34, 48, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.knox-flow-line {
+  stroke-dasharray: 10 8;
+  animation: knoxFlowDash 1s linear infinite;
+}
+
+.knox-flow-delay {
+  animation-delay: 0.4s;
+}
+
+@keyframes knoxFlowDash {
+  to { stroke-dashoffset: -36; }
+}
+
+.knox-pulse-dot {
+  animation: knoxDotPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes knoxDotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.status-dot-online {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fde047;
+  box-shadow: 0 0 10px #fde047;
+}
