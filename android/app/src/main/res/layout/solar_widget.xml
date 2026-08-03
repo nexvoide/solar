@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="KNOX SOLAR" android:textColor="@color/widget_forecast" android:textSize="11sp" android:textStyle="bold" />
+        <TextView android:id="@+id/updated_at" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Tap to refresh" android:textColor="@color/widget_label" android:textSize="10sp" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="horizontal">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CURRENT SOLAR" android:textColor="@color/widget_label" android:textSize="9sp" />
+            <TextView android:id="@+id/current_solar" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="—" android:textColor="@color/widget_solar" android:textSize="20sp" android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="HOUSE LOAD" android:textColor="@color/widget_label" android:textSize="9sp" />
+            <TextView android:id="@+id/house_load" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="—" android:textColor="@color/widget_load" android:textSize="20sp" android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="FORECAST SOLAR" android:textColor="@color/widget_label" android:textSize="9sp" />
+            <TextView android:id="@+id/forecast_solar" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="—" android:textColor="@color/widget_forecast" android:textSize="20sp" android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

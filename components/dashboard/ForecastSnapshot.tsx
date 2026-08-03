@@ -130,7 +130,7 @@ export default function ForecastSnapshot({ data, onOpen }: { data: LiveData; onO
       <div className="grid grid-cols-2 sm:grid-cols-4">
         <SnapshotMetric primary label={copy.currentSolar} value={`${actual.toFixed(2)} kW`} color="text-amber-300" />
         <SnapshotMetric divider label={copy.houseLoad} value={`${load.toFixed(2)} kW`} color="text-sky-300" />
-        <SnapshotMetric label={copy.surplus} value={`${surplus.toFixed(2)} kW`} color="text-emerald-300" />
+        <SnapshotMetric label={copy.forecastSolar} value={loading ? "…" : `${predicted.toFixed(2)} kW`} color="text-emerald-300" />
         <SnapshotMetric wide label={copy.nextHour} value={loading ? "…" : `${nextOutput.toFixed(2)} kW`} color="text-violet-300" />
       </div>
       {forecast.hours.length > 0 && <div className="border-t border-white/[0.07] px-5 py-4 sm:px-6"><div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">{copy.todayTimeline}</span><span className="text-xs text-slate-500">{forecast.next?.condition ?? forecast.current?.condition}</span></div><div className="flex h-16 items-end gap-1.5">{forecast.hours.map((hour) => <div key={hour.time} className="group/bar flex min-w-0 flex-1 flex-col items-center justify-end gap-1"><div className="w-full rounded-t bg-gradient-to-t from-emerald-500/35 to-amber-300/80 transition" style={{ height: `${Math.max(4, hour.outputKw / maxOutput * 44)}px` }}/><span className="text-[8px] text-slate-700">{new Date(hour.time).getHours()}</span></div>)}</div></div>}
