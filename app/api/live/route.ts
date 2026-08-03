@@ -3,14 +3,13 @@ import {
   isConnected,
   KnoxError,
 } from "@/lib/knox";
-import { apiJson, hydrateKnoxFromRequest } from "@/lib/api-route";
+import { apiJson, withRequestKnoxState } from "@/lib/api-route";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  await hydrateKnoxFromRequest();
-
-  try {
+  return withRequestKnoxState(request, async () => {
+   try {
     if (!isConnected()) {
       return apiJson(
         { ok: false, error: "Not connected", offline: true },
@@ -42,5 +41,6 @@ export async function GET(request: Request) {
       { ok: false, error: message, offline },
       { status: offline ? 503 : 500 },
     );
-  }
+   }
+  });
 }
