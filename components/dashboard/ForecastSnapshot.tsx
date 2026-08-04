@@ -14,6 +14,7 @@ import type { LiveData } from "@/lib/knox";
 import { useSettings } from "@/components/SettingsProvider";
 import { applianceNames, forecastCopy } from "@/lib/i18n/forecast";
 import { DEFAULT_RULES, ENERGY_RULES_KEY, readLocal, type NotificationRules } from "@/lib/energy-platform";
+import { formatPowerKw } from "@/lib/formatPower";
 
 const SETTINGS_KEY = "knox_solar_forecast_settings_v1";
 const LEARNING_KEY = "knox_solar_forecast_learning_v1";
@@ -41,7 +42,7 @@ function weatherHours(weather: ForecastWeather): WeatherHour[] {
 }
 
 export default function ForecastSnapshot({ data, onOpen }: { data: LiveData; onOpen: () => void }) {
-  const { language } = useSettings();
+  const { language, unit } = useSettings();
   const copy = forecastCopy[language];
   const [settings, setSettings] = useState<SolarForecastSettings | null>(null);
   const [weather, setWeather] = useState<ForecastWeather | null>(null);
@@ -128,10 +129,10 @@ export default function ForecastSnapshot({ data, onOpen }: { data: LiveData; onO
         <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${status.color === "emerald" ? "bg-emerald-400/10 text-emerald-300" : status.color === "amber" ? "bg-amber-400/10 text-amber-300" : "bg-red-400/10 text-red-300"}`}>{statusLabel}</span>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4">
-        <SnapshotMetric primary label={copy.currentSolar} value={`${actual.toFixed(2)} kW`} color="text-amber-300" />
-        <SnapshotMetric divider label={copy.houseLoad} value={`${load.toFixed(2)} kW`} color="text-sky-300" />
-        <SnapshotMetric label={copy.forecastSolar} value={loading ? "…" : `${predicted.toFixed(2)} kW`} color="text-emerald-300" />
-        <SnapshotMetric wide label={copy.nextHour} value={loading ? "…" : `${nextOutput.toFixed(2)} kW`} color="text-violet-300" />
+        <SnapshotMetric primary label={copy.currentSolar} value={formatPowerKw(actual, unit)} color="text-amber-300" />
+        <SnapshotMetric divider label={copy.houseLoad} value={formatPowerKw(load, unit)} color="text-sky-300" />
+        <SnapshotMetric label={copy.forecastSolar} value={loading ? "…" : formatPowerKw(predicted, unit)} color="text-emerald-300" />
+        <SnapshotMetric wide label={copy.nextHour} value={loading ? "…" : formatPowerKw(nextOutput, unit)} color="text-violet-300" />
       </div>
       {forecast.hours.length > 0 && <div className="border-t border-white/[0.07] px-5 py-4 sm:px-6"><div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">{copy.todayTimeline}</span><span className="text-xs text-slate-500">{forecast.next?.condition ?? forecast.current?.condition}</span></div><div className="flex h-16 items-end gap-1.5">{forecast.hours.map((hour) => <div key={hour.time} className="group/bar flex min-w-0 flex-1 flex-col items-center justify-end gap-1"><div className="w-full rounded-t bg-gradient-to-t from-emerald-500/35 to-amber-300/80 transition" style={{ height: `${Math.max(4, hour.outputKw / maxOutput * 44)}px` }}/><span className="text-[8px] text-slate-700">{new Date(hour.time).getHours()}</span></div>)}</div></div>}
       <div className="flex items-center justify-between gap-4 border-t border-white/[0.07] px-5 py-4 text-xs sm:px-6"><span className={safeAppliance ? "text-slate-300" : "text-slate-500"}>{safeAppliance ? `${copy.safeStart} ${applianceNames[language][safeAppliance.id] ?? safeAppliance.name}.` : copy.noHeadroom}</span><span className="shrink-0 text-emerald-400 transition group-hover:translate-x-1">{copy.viewDetails} →</span></div>

@@ -18,6 +18,7 @@ import {
 import type { LiveData } from "@/lib/knox";
 import { useSettings } from "@/components/SettingsProvider";
 import { applianceNames, forecastCopy } from "@/lib/i18n/forecast";
+import { formatPowerKw } from "@/lib/formatPower";
 
 const SETTINGS_KEY = "knox_solar_forecast_settings_v1";
 const APPLIANCES_KEY = "knox_solar_forecast_appliances_v1";
@@ -99,7 +100,7 @@ function parseWeather(data: WeatherResponse): WeatherHour[] {
 }
 
 export default function SolarForecastAssistant({ data, onClose }: { data: LiveData; onClose: () => void }) {
-  const { language, dir } = useSettings();
+  const { language, dir, unit } = useSettings();
   const copy = forecastCopy[language];
   const [ready, setReady] = useState(false);
   const [settings, setSettings] = useState<SolarForecastSettings | null>(null);
@@ -268,7 +269,7 @@ export default function SolarForecastAssistant({ data, onClose }: { data: LiveDa
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400">{copy.assistant}</p>
           <h2 className="mt-1 text-2xl font-bold text-white">{copy.canTurnOn}</h2>
-          <p className="mt-1 text-sm text-slate-500">📍 {coordinateLabel(settings.latitude, settings.longitude)}{settings.locationAccuracy ? ` · ±${Math.round(settings.locationAccuracy)} m` : ""} · {capacityKw.toFixed(2)} kW array</p>
+          <p className="mt-1 text-sm text-slate-500">📍 {coordinateLabel(settings.latitude, settings.longitude)}{settings.locationAccuracy ? ` · ±${Math.round(settings.locationAccuracy)} m` : ""} · {formatPowerKw(capacityKw, unit)} array</p>
         </div>
         <button type="button" onClick={() => setEditing(true)} className="rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-400">{copy.editSetup}</button>
       </div>
@@ -276,9 +277,9 @@ export default function SolarForecastAssistant({ data, onClose }: { data: LiveDa
       {error && <GlassCard className="border-red-500/20 py-4 text-sm text-red-300">⚠️ {error} <button onClick={() => void fetchWeather(settings)} className="underline">Retry</button></GlassCard>}
 
       <div className="grid grid-cols-2 gap-3">
-        <MetricCard label={copy.currentSolar} value={`${actualPv.toFixed(2)} kW`} accent="text-amber-300" />
-        <MetricCard label={copy.forecastSolar} value={loading && !weather ? "…" : `${predictedPv.toFixed(2)} kW`} accent="text-emerald-300" />
-        <MetricCard label={copy.houseLoad} value={`${houseLoad.toFixed(2)} kW`} accent="text-sky-300" />
+        <MetricCard label={copy.currentSolar} value={formatPowerKw(actualPv, unit)} accent="text-amber-300" />
+        <MetricCard label={copy.forecastSolar} value={loading && !weather ? "…" : formatPowerKw(predictedPv, unit)} accent="text-emerald-300" />
+        <MetricCard label={copy.houseLoad} value={formatPowerKw(houseLoad, unit)} accent="text-sky-300" />
         <MetricCard label={copy.accuracy} value={`${accuracy.toFixed(0)}%`} accent="text-violet-300" />
       </div>
 
@@ -291,7 +292,7 @@ export default function SolarForecastAssistant({ data, onClose }: { data: LiveDa
 
       <GlassCard accent="live">
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.surplusNow}</p>
-        <p className="mt-2 text-4xl font-bold text-emerald-300">{surplusKw.toFixed(2)} kW</p>
+        <p className="mt-2 text-4xl font-bold text-emerald-300">{formatPowerKw(surplusKw, unit)}</p>
         <p className="mt-2 text-sm text-slate-500">{copy.surplusHint}</p>
       </GlassCard>
 
@@ -310,7 +311,7 @@ export default function SolarForecastAssistant({ data, onClose }: { data: LiveDa
           {forecast.map((hour) => (
             <article key={hour.time} className="glass min-w-[150px] snap-start p-4">
               <p className="text-sm font-semibold text-slate-300">{formatHour(hour.time)}</p>
-              <p className="mt-3 text-2xl font-bold text-white">{hour.outputKw.toFixed(2)} kW</p>
+              <p className="mt-3 text-2xl font-bold text-white">{formatPowerKw(hour.outputKw, unit)}</p>
               <p className="mt-2 text-xs text-slate-500">{localCondition(hour.condition, copy)}</p>
               <p className="mt-3 text-[11px] text-slate-600">☁ {hour.cloudCover}% · UV {hour.uvIndex.toFixed(1)}</p>
               <p className="text-[11px] text-slate-600">{copy.rain} {hour.precipitationProbability}%</p>

@@ -380,10 +380,32 @@ function readFlowField(
 }
 
 function readFlowPower(entries: FlowEntry[] | undefined, keys: string[]): FieldReading {
-  const field = readFlowField(entries, keys);
-  if (field.value !== "—") return { ...field, unit: field.unit || "kW" };
+  const matches = keys.flatMap((key) => {
+    const keyLower = key.toLowerCase();
+    const match = entries?.find((entry) => {
+      const par = entry.par?.toLowerCase() ?? "";
+      return par === keyLower || par.includes(keyLower);
+    });
+    return match?.val !== undefined && match.val !== null && match.val !== "" && match.val !== "-"
+      ? [match]
+      : [];
+  });
 
-  const first = entries?.find((e) => e.val !== undefined && e.val !== "-" && e.val !== "");
+  // Some Knox inverters return multiple PV power aliases. One alias can stay at
+  // zero while another (usually pv_charging_power) contains the live reading.
+  const selected = matches.find((entry) => {
+    const value = Number.parseFloat(String(entry.val));
+    return Number.isFinite(value) && value !== 0;
+  }) ?? matches[0];
+
+  if (selected) {
+    return { value: String(selected.val), unit: selected.unit || "kW" };
+  }
+
+  const first = entries?.find((entry) => {
+    const par = entry.par?.toLowerCase() ?? "";
+    return par.includes("power") && entry.val !== undefined && entry.val !== "-" && entry.val !== "";
+  });
   if (first) {
     return { value: String(first.val), unit: first.unit ?? "kW" };
   }

@@ -21,6 +21,11 @@ export function formatPower(
   const kw = toKw(value, unit);
   if (kw === null) return value === "—" ? "—" : `${value} ${unit}`.trim();
 
+  return formatPowerKw(kw, preference);
+}
+
+/** Format a value that is already normalized to kilowatts. */
+export function formatPowerKw(kw: number, preference: UnitPreference): string {
   if (preference === "kW") {
     return `${kw.toFixed(2)} kW`;
   }
