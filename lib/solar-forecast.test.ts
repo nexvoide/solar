@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyRealtimeAdjustment, calculateForecast, mergeCurrentWeatherObservation, type ForecastHour, type SolarForecastSettings, type WeatherHour } from "./solar-forecast";
+import { applyRealtimeAdjustment, calculateForecast, forecastCapacityKw, isDaylightTime, mergeCurrentWeatherObservation, type ForecastHour, type SolarForecastSettings, type WeatherHour } from "./solar-forecast";
 import { formatPowerKw } from "./formatPower";
 
 function buildWeather(overrides: Partial<WeatherHour>): WeatherHour {
@@ -42,6 +42,15 @@ test("near sunrise still produces a tiny positive solar value", () => {
   assert.ok(twilight.outputKw > 0, `expected tiny twilight production, got ${twilight.outputKw}`);
 });
 
+test("night time is never treated as the nearest daylight forecast hour", () => {
+  const sunrise = "2026-08-08T05:30:00.000Z";
+  const sunset = "2026-08-08T19:00:00.000Z";
+
+  assert.equal(isDaylightTime("2026-08-08T13:00:00.000Z", sunrise, sunset), true);
+  assert.equal(isDaylightTime("2026-08-08T22:52:00.000Z", sunrise, sunset), false);
+  assert.equal(isDaylightTime("2026-08-08T04:30:00.000Z", sunrise, sunset), false);
+});
+
 test("live production adjusts the forecast toward observed output", () => {
   const hours: ForecastHour[] = [
     {
@@ -80,6 +89,50 @@ test("rainy conditions reduce solar forecast much more aggressively", () => {
 
   assert.ok(clear.outputKw > 2.5, `expected clear forecast to be high, got ${clear.outputKw}`);
   assert.ok(rainy.outputKw < clear.outputKw * 0.25, `expected rain to reduce output heavily, got ${rainy.outputKw} vs ${clear.outputKw}`);
+});
+
+test("rain probability alone does not crush a sunny high-irradiance forecast", () => {
+  const settings: SolarForecastSettings = {
+    locationName: "Test", latitude: 0, longitude: 0, panels: 8, panelWattage: 450,
+    orientation: "south", roofTilt: 30, systemType: "net-metering", systemEfficiency: 95,
+  };
+  const sunny = calculateForecast(settings, [buildWeather({
+    cloudCover: 7, precipitationProbability: 0, weatherCode: 0,
+    irradiance: 850, tiltedIrradiance: 850,
+  })], "2026-08-08T06:00:00.000Z", "2026-08-08T20:00:00.000Z", 1)[0];
+  const possibleRain = calculateForecast(settings, [buildWeather({
+    cloudCover: 7, precipitationProbability: 51, weatherCode: 0,
+    irradiance: 850, tiltedIrradiance: 850,
+  })], "2026-08-08T06:00:00.000Z", "2026-08-08T20:00:00.000Z", 1)[0];
+
+  assert.equal(possibleRain.outputKw, sunny.outputKw);
+  assert.ok(possibleRain.outputKw > 2.5, `expected strong GTI to produce realistic midday output, got ${possibleRain.outputKw}`);
+  assert.equal(possibleRain.condition, "Rain possible");
+});
+
+test("forecast output never exceeds the configured array capacity", () => {
+  const settings: SolarForecastSettings = {
+    locationName: "Test", latitude: 0, longitude: 0, panels: 8, panelWattage: 450,
+    orientation: "south", roofTilt: 30, systemType: "net-metering", systemEfficiency: 100,
+  };
+  const unusuallyHighIrradiance = calculateForecast(settings, [buildWeather({
+    temperature: 20, irradiance: 1400, tiltedIrradiance: 1400,
+  })], "2026-08-08T06:00:00.000Z", "2026-08-08T20:00:00.000Z", 1.2)[0];
+
+  assert.equal(unusuallyHighIrradiance.outputKw, 3.6);
+});
+
+test("explicit AC output limit models an inverter below panel nameplate capacity", () => {
+  const settings: SolarForecastSettings = {
+    locationName: "Test", latitude: 0, longitude: 0, panels: 10, panelWattage: 725,
+    orientation: "south", roofTilt: 8, systemType: "hybrid", systemEfficiency: 90, maxOutputKw: 5,
+  };
+  const peak = calculateForecast(settings, [buildWeather({
+    temperature: 20, irradiance: 1200, tiltedIrradiance: 1200,
+  })], "2026-08-08T06:00:00.000Z", "2026-08-08T20:00:00.000Z", 1)[0];
+
+  assert.equal(forecastCapacityKw(settings), 5);
+  assert.equal(peak.outputKw, 5);
 });
 
 test("heavy rain cannot produce an unrealistic multi-kilowatt forecast", () => {

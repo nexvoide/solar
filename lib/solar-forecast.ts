@@ -1,5 +1,7 @@
-export type PanelOrientation = "north" | "south" | "east" | "west" | "south-east" | "south-west";
+export type PanelOrientation = "north" | "north-east" | "east" | "south-east" | "south" | "south-west" | "west" | "north-west";
 export type SolarSystemType = "off-grid" | "hybrid" | "net-metering";
+export type ValueSource = "user" | "estimated";
+export type ShadingLevel = "none" | "some" | "heavy" | "unknown";
 
 export interface SolarForecastSettings {
   locationName: string;
@@ -12,6 +14,14 @@ export interface SolarForecastSettings {
   roofTilt: number;
   systemType: SolarSystemType;
   systemEfficiency: number;
+  maxOutputKw?: number;
+  timezone?: string;
+  tiltSource?: ValueSource;
+  directionSource?: ValueSource;
+  inverterSource?: ValueSource;
+  shadingLevel?: ShadingLevel;
+  panelBrand?: string;
+  panelModel?: string;
 }
 
 export interface Appliance {
@@ -70,8 +80,10 @@ export const ORIENTATION_AZIMUTH: Record<PanelOrientation, number> = {
   south: 0,
   "south-east": -45,
   east: -90,
+  "north-east": -135,
   "south-west": 45,
   west: 90,
+  "north-west": 135,
   north: 180,
 };
 
@@ -119,46 +131,28 @@ const ORIENTATION_FACTOR: Record<PanelOrientation, number> = {
   "south-west": 0.96,
   east: 0.9,
   west: 0.9,
+  "north-east": 0.82,
+  "north-west": 0.82,
   north: 0.75,
 };
 
-function cloudFactor(cloud: number): number {
-  const points = [[0, 1], [20, 0.95], [40, 0.8], [60, 0.6], [80, 0.35], [100, 0.15]];
-  const bounded = Math.max(0, Math.min(100, cloud));
-  for (let i = 1; i < points.length; i += 1) {
-    if (bounded <= points[i][0]) {
-      const [x0, y0] = points[i - 1];
-      const [x1, y1] = points[i];
-      return y0 + ((bounded - x0) / (x1 - x0)) * (y1 - y0);
-    }
-  }
-  return 0.15;
-}
-
-function rainFactor(hour: WeatherHour): number {
-  const probability = Math.max(0, Math.min(100, hour.precipitationProbability));
-  const code = hour.weatherCode;
-  if (code >= 95 || probability >= 90) return 0.03;
-  if (code >= 80 || probability >= 75) return 0.1;
-  if (code >= 60 || probability >= 50) return 0.25;
-  if (code >= 51 || probability >= 30) return 0.45;
-  if (probability >= 15) return 0.7;
-  return 1;
-}
+const SHADING_FACTOR: Record<ShadingLevel, number> = { none: 1, some: 0.9, heavy: 0.7, unknown: 0.9 };
 
 /**
  * A weather service can occasionally report high irradiance alongside rain.
  * Keep those contradictory inputs from producing an unsafe, optimistic result.
+ * Probability alone is not evidence that rain is occurring: GTI already reflects
+ * the expected cloud cover, so applying another probability multiplier would
+ * double-count the same weather and severely under-forecast otherwise sunny hours.
  */
 function severeWeatherCapacityLimit(hour: WeatherHour): number {
-  const rain = Math.max(0, Math.min(100, hour.precipitationProbability));
   const cloud = Math.max(0, Math.min(100, hour.cloudCover));
   const code = hour.weatherCode;
 
-  if (code >= 95 || rain >= 90) return 0.05;
-  if (code >= 80 || rain >= 75) return 0.12;
-  if (code >= 60 || rain >= 60) return 0.2;
-  if (code >= 51 || rain >= 45) return 0.35;
+  if (code >= 95) return 0.05;
+  if (code >= 80) return 0.12;
+  if (code >= 60) return 0.2;
+  if (code >= 51) return 0.35;
   if (cloud >= 90) return 0.2;
   if (cloud >= 80) return 0.3;
   if (cloud >= 70) return 0.45;
@@ -169,18 +163,6 @@ function hasSevereWeather(hour: WeatherHour): boolean {
   return severeWeatherCapacityLimit(hour) < 1;
 }
 
-function sunlightFactor(time: number, sunrise: number, sunset: number): number {
-  const dayLength = sunset - sunrise;
-  if (dayLength <= 0) return 0;
-
-  const twilightWindow = 90 * 60_000;
-  if (time < sunrise - twilightWindow || time > sunset + twilightWindow) return 0;
-
-  const progress = (time - sunrise) / dayLength;
-  if (progress <= 0 || progress >= 1) return 0.015;
-  return Math.max(0.015, Math.sin(Math.PI * progress));
-}
-
 function temperatureFactor(temp: number): number {
   if (temp <= 25) return 1;
   return Math.max(0.75, 1 - (temp - 25) * 0.008);
@@ -189,11 +171,25 @@ function temperatureFactor(temp: number): number {
 export function weatherCondition(code: number, cloud: number, rain: number): string {
   if (code >= 95) return "Thunderstorm";
   if (code >= 80 || rain >= 60) return "Rain likely";
-  if (code >= 51) return "Rain possible";
+  if (code >= 51 || rain >= 30) return "Rain possible";
   if (code >= 45) return "Foggy";
   if (cloud >= 75) return "Cloudy";
   if (cloud >= 30) return "Partly cloudy";
   return "Sunny";
+}
+
+export function isDaylightTime(referenceTime: string | number, sunrise: string, sunset: string): boolean {
+  const reference = new Date(referenceTime).getTime();
+  const start = new Date(sunrise).getTime();
+  const end = new Date(sunset).getTime();
+  return Number.isFinite(reference) && Number.isFinite(start) && Number.isFinite(end) && reference >= start && reference <= end;
+}
+
+export function forecastCapacityKw(settings: SolarForecastSettings): number {
+  const dcCapacityKw = (settings.panels * settings.panelWattage) / 1000;
+  const estimatedAcCapacityKw = dcCapacityKw * Math.max(0.5, Math.min(1, settings.systemEfficiency / 100));
+  const configuredLimit = settings.maxOutputKw && settings.maxOutputKw > 0 ? settings.maxOutputKw : estimatedAcCapacityKw;
+  return Math.min(dcCapacityKw, configuredLimit);
 }
 
 export function calculateForecast(
@@ -203,7 +199,7 @@ export function calculateForecast(
   sunset: string,
   calibration: number,
 ): ForecastHour[] {
-  const capacityKw = (settings.panels * settings.panelWattage) / 1000;
+  const capacityKw = forecastCapacityKw(settings);
   const start = new Date(sunrise).getTime();
   const end = new Date(sunset).getTime();
 
@@ -213,17 +209,18 @@ export function calculateForecast(
       return time >= start - 60 * 60_000 && time <= end;
     })
     .map((hour) => {
-      const time = new Date(hour.time).getTime();
       const hasTilted = hour.tiltedIrradiance !== null && hour.tiltedIrradiance >= 0;
       const irradianceFactor = Math.max(0, (hasTilted ? hour.tiltedIrradiance! : hour.irradiance) / 1000);
-      const weatherFactor = cloudFactor(hour.cloudCover) * rainFactor(hour) * ORIENTATION_FACTOR[settings.orientation];
-      const sunFactor = sunlightFactor(time, start, end);
+      // GTI is already corrected for the configured panel plane and forecast
+      // atmosphere. GHI needs the orientation fallback, but neither value should
+      // be multiplied by cloud/rain/sun factors a second time.
+      const planeFactor = hasTilted ? 1 : ORIENTATION_FACTOR[settings.orientation];
+      const shadingFactor = SHADING_FACTOR[settings.shadingLevel ?? "unknown"];
       const weatherCapacityKw = capacityKw * severeWeatherCapacityLimit(hour);
       const outputKw = Math.min(
         capacityKw,
         weatherCapacityKw,
-        capacityKw * irradianceFactor * weatherFactor * sunFactor * temperatureFactor(hour.temperature) *
-          (settings.systemEfficiency / 100) * calibration,
+        capacityKw * irradianceFactor * planeFactor * shadingFactor * temperatureFactor(hour.temperature) * calibration,
       );
       return {
         ...hour,

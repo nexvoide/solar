@@ -404,29 +404,33 @@ select {
 
 .ai-spark { text-shadow: 0 0 14px rgba(196,181,253,.8); }
 
-.ai-plan-step {
+.ai-plan-marker {
   position: relative;
+  display: block;
+  min-height: 100%;
 }
 
-.ai-plan-step::before {
+.ai-plan-marker::before {
   content: "";
   position: absolute;
-  inset-inline-start: 72px;
+  inset-inline-start: 50%;
   top: 5px;
   width: 7px;
   height: 7px;
+  transform: translateX(-50%);
   border-radius: 50%;
   background: #a78bfa;
   box-shadow: 0 0 10px rgba(167,139,250,.65);
 }
 
-.ai-plan-step:not(:last-child)::after {
+.ai-plan-step:not(:last-child) .ai-plan-marker::after {
   content: "";
   position: absolute;
-  inset-inline-start: 75px;
+  inset-inline-start: 50%;
   top: 15px;
-  bottom: 0;
+  bottom: -16px;
   width: 1px;
+  transform: translateX(-50%);
   background: linear-gradient(rgba(167,139,250,.35), rgba(167,139,250,.04));
 }
 

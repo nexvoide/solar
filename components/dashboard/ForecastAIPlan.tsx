@@ -117,6 +117,6 @@ export default function ForecastAIPlan({ hours, appliances, loadKw, language }: 
     </div>
     <p className="mt-3 text-sm leading-6 text-slate-300">{result.briefing}</p>
     <p className="mt-1.5 flex items-start gap-2 text-xs leading-5 text-slate-500"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-300/70" />{measuredConfidence.confidenceReason}</p>
-    {result.plan.length > 0 && <div className="ai-plan-timeline mt-5 border-t border-white/[0.07] pt-4">{result.plan.map((item, index) => <div key={`${item.time}-${index}`} className="ai-plan-step grid grid-cols-[82px_1fr] gap-3 pb-4 last:pb-0"><span className="text-xs font-semibold text-violet-300">{item.time}</span><div><p className="text-sm font-medium text-white">{item.task}</p><p className="mt-0.5 text-xs leading-5 text-slate-500">{item.reason}</p></div></div>)}</div>}
+    {result.plan.length > 0 && <div className="ai-plan-timeline mt-5 border-t border-white/[0.07] pt-4">{result.plan.map((item, index) => <div key={`${item.time}-${index}`} className="ai-plan-step grid grid-cols-[88px_14px_minmax(0,1fr)] gap-2 pb-4 last:pb-0 sm:grid-cols-[112px_14px_minmax(0,1fr)] sm:gap-3"><span className="break-words text-xs font-semibold leading-5 text-violet-300">{item.time}</span><span className="ai-plan-marker" aria-hidden="true"/><div className="min-w-0"><p className="text-sm font-medium text-white">{item.task}</p><p className="mt-0.5 text-xs leading-5 text-slate-500">{item.reason}</p></div></div>)}</div>}
   </GlassCard>;
 }

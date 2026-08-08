@@ -6,6 +6,8 @@ import {
   availability,
   calculateForecast,
   DEFAULT_APPLIANCES,
+  forecastCapacityKw,
+  isDaylightTime,
   mergeCurrentWeatherObservation,
   ORIENTATION_AZIMUTH,
   parsePowerKw,
@@ -58,7 +60,10 @@ export default function ForecastSnapshot({ data, onOpen }: { data: LiveData; onO
         const saved = localStorage.getItem(SETTINGS_KEY);
         const learned = localStorage.getItem(LEARNING_KEY);
         setSettings(saved ? JSON.parse(saved) as SolarForecastSettings : null);
-        setCalibration(learned ? Number(JSON.parse(learned).calibration ?? 1) : 1);
+        if (learned) {
+          const values = JSON.parse(learned) as { calibration?: number; cloudCoefficient?: number; temperatureCoefficient?: number };
+          setCalibration(Number(values.calibration ?? 1) * Number(values.cloudCoefficient ?? 1) * Number(values.temperatureCoefficient ?? 1));
+        } else setCalibration(1);
       } catch {
         setSettings(null);
       }
@@ -93,6 +98,9 @@ export default function ForecastSnapshot({ data, onOpen }: { data: LiveData; onO
     const hours = calculateForecast(settings, observedWeather, weather.daily.sunrise[0], weather.daily.sunset[0], calibration);
     const adjustedHours = applyRealtimeAdjustment(hours, data.fetchedAt, actual);
     const now = new Date(data.fetchedAt).getTime();
+    if (!isDaylightTime(now, weather.daily.sunrise[0], weather.daily.sunset[0])) {
+      return { current: null, next: null, hours: adjustedHours };
+    }
     const current = adjustedHours.reduce((best, hour) => !best || Math.abs(new Date(hour.time).getTime() - now) < Math.abs(new Date(best.time).getTime() - now) ? hour : best, adjustedHours[0] ?? null);
     const next = adjustedHours.find((hour) => new Date(hour.time).getTime() > now + 30 * 60 * 1000) ?? null;
     return { current, next, hours: adjustedHours };
@@ -122,12 +130,17 @@ export default function ForecastSnapshot({ data, onOpen }: { data: LiveData; onO
   const load = parsePowerKw(data.loadPower.value, data.loadPower.unit) ?? 0;
   const surplus = Math.max(0, actual - load);
   const predicted = forecast.current?.outputKw ?? 0;
-  const nextOutput = forecast.next?.outputKw ?? predicted;
-  const capacity = settings.panels * settings.panelWattage / 1000;
+  const nextOutput = forecast.next?.outputKw ?? 0;
+  const capacity = forecastCapacityKw(settings);
   const status = availability(actual, capacity);
   const statusLabel = status.label === "Excellent" ? copy.excellent : status.label === "Moderate" ? copy.moderate : copy.low;
   const safeAppliance = [...DEFAULT_APPLIANCES].sort((a, b) => b.watts - a.watts).find((appliance) => appliance.watts <= surplus * 1000 * 0.85);
   const maxOutput = Math.max(...forecast.hours.map((hour) => hour.outputKw), 0.1);
+  const expectedEnergyKwh = forecast.hours.reduce((sum, hour) => sum + hour.outputKw, 0);
+  const forecastPeakKw = Math.max(...forecast.hours.map((hour) => hour.outputKw), 0);
+  const estimatedInputs = [settings.tiltSource, settings.directionSource, settings.inverterSource].filter((source) => source === "estimated").length + (settings.shadingLevel === "unknown" ? 1 : 0);
+  const weatherUncertainty = forecast.hours.length ? forecast.hours.reduce((sum, hour) => sum + hour.cloudCover + hour.precipitationProbability, 0) / forecast.hours.length : 200;
+  const confidence = estimatedInputs >= 3 || weatherUncertainty >= 120 ? "Low" : estimatedInputs > 0 || weatherUncertainty >= 70 ? "Medium" : "High";
 
   return (
     <button type="button" onClick={onOpen} className="forecast-dashboard-card group w-full text-start">
@@ -142,10 +155,13 @@ export default function ForecastSnapshot({ data, onOpen }: { data: LiveData; onO
         <SnapshotMetric wide label={copy.nextHour} value={loading ? "…" : formatPowerKw(nextOutput, unit)} color="text-violet-300" />
       </div>
       {forecast.hours.length > 0 && <div className="border-t border-white/[0.07] px-5 py-4 sm:px-6"><div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">{copy.todayTimeline}</span><span className="text-xs text-slate-500">{forecast.next?.condition ?? forecast.current?.condition}</span></div><div className="flex h-16 items-end gap-1.5">{forecast.hours.map((hour) => <div key={hour.time} className="group/bar flex min-w-0 flex-1 flex-col items-center justify-end gap-1"><div className="w-full rounded-t bg-gradient-to-t from-emerald-500/35 to-amber-300/80 transition" style={{ height: `${Math.max(4, hour.outputKw / maxOutput * 44)}px` }}/><span className="text-[8px] text-slate-700">{new Date(hour.time).getHours()}</span></div>)}</div></div>}
+      {forecast.hours.length > 0 && <div className="grid grid-cols-3 border-t border-white/[.07]"><ForecastResult label="Maximum PV power" value={`${forecastPeakKw.toFixed(1)} kW`} hint="Forecast AC peak"/><ForecastResult label="Expected energy" value={`${expectedEnergyKwh.toFixed(1)} kWh`} hint="Today"/><ForecastResult label="Confidence" value={confidence} hint={estimatedInputs ? `${estimatedInputs} estimated input${estimatedInputs===1?"":"s"}` : "Setup complete"}/></div>}
       <div className="flex items-center justify-between gap-4 border-t border-white/[0.07] px-5 py-4 text-xs sm:px-6"><span className={safeAppliance ? "text-slate-300" : "text-slate-500"}>{safeAppliance ? `${copy.safeStart} ${applianceNames[language][safeAppliance.id] ?? safeAppliance.name}.` : copy.noHeadroom}</span><span className="shrink-0 text-emerald-400 transition group-hover:translate-x-1">{copy.viewDetails} →</span></div>
     </button>
   );
 }
+
+function ForecastResult({label,value,hint}:{label:string;value:string;hint:string}){return <div className="border-e border-white/[.07] px-3 py-4 text-center last:border-e-0"><p className="text-[9px] font-semibold uppercase tracking-wider text-slate-600">{label}</p><p className="mt-1 text-sm font-bold text-white sm:text-base">{value}</p><p className="mt-1 text-[9px] text-slate-600">{hint}</p></div>}
 
 function SnapshotMetric({ label, value, color, primary = false, divider = false, wide = false }: { label: string; value: string; color: string; primary?: boolean; divider?: boolean; wide?: boolean }) {
   return <div className={`${primary ? "col-span-2 border-b border-white/[0.07] py-6 sm:col-span-1 sm:border-b-0" : wide ? "col-span-2 border-t border-white/[0.07] py-5 sm:col-span-1 sm:border-t-0" : "py-5"} ${divider ? "border-e border-white/[0.07]" : ""} px-3 text-center sm:border-e sm:border-white/[0.07] sm:px-6 sm:py-6 sm:last:border-e-0`}><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">{label}</p><p className={`mt-2 font-bold tabular-nums ${primary ? "text-4xl sm:text-2xl" : "text-2xl"} ${color}`}>{value}</p></div>;

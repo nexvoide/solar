@@ -7,6 +7,8 @@ import {
   availability,
   calculateForecast,
   DEFAULT_APPLIANCES,
+  forecastCapacityKw,
+  isDaylightTime,
   mergeCurrentWeatherObservation,
   ORIENTATION_AZIMUTH,
   parsePowerKw,
@@ -14,7 +16,6 @@ import {
   type ForecastHour,
   type PanelOrientation,
   type SolarForecastSettings,
-  type SolarSystemType,
   type WeatherHour,
 } from "@/lib/solar-forecast";
 import type { LiveData } from "@/lib/knox";
@@ -50,6 +51,7 @@ interface LocationResult {
   admin1?: string;
   country?: string;
   accuracy?: number;
+  timezone?: string;
 }
 
 function coordinateLabel(latitude: number, longitude: number): string {
@@ -193,8 +195,9 @@ export default function SolarForecastAssistant({ data, onClose }: { data: LiveDa
   const referenceTime = new Date(data.fetchedAt).getTime();
   const currentForecast = useMemo(() => {
     if (!forecast.length) return null;
+    if (!weather?.daily?.sunrise?.[0] || !weather.daily.sunset?.[0] || !isDaylightTime(referenceTime, weather.daily.sunrise[0], weather.daily.sunset[0])) return null;
     return nearestHour(forecast, referenceTime);
-  }, [forecast, referenceTime]);
+  }, [forecast, referenceTime, weather]);
   const houseLoad = parsePowerKw(data.loadPower.value, data.loadPower.unit) ?? 0;
   const predictedPv = currentForecast?.outputKw ?? 0;
   const surplusKw = Math.max(0, predictedPv - houseLoad);
@@ -264,7 +267,7 @@ export default function SolarForecastAssistant({ data, onClose }: { data: LiveDa
     );
   }
 
-  const capacityKw = (settings.panels * settings.panelWattage) / 1000;
+  const capacityKw = forecastCapacityKw(settings);
   const status = availability(predictedPv, capacityKw);
   const statusClasses = status.color === "emerald"
     ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
@@ -384,20 +387,27 @@ function ApplianceEditor({ appliances, onChange }: { appliances: Appliance[]; on
 
 function ForecastSetup({ initial, onSave, onCancel }: { initial: SolarForecastSettings | null; onSave: (value: SolarForecastSettings) => void; onCancel?: () => void }) {
   const { language } = useSettings();
-  const copy = forecastCopy[language];
   const [city, setCity] = useState(initial?.locationName ?? "");
-  const [location, setLocation] = useState<LocationResult | null>(initial ? { id: 0, name: initial.locationName, latitude: initial.latitude, longitude: initial.longitude, accuracy: initial.locationAccuracy } : null);
+  const [location, setLocation] = useState<LocationResult | null>(initial ? { id: 0, name: initial.locationName, latitude: initial.latitude, longitude: initial.longitude, accuracy: initial.locationAccuracy, timezone: initial.timezone } : null);
   const [results, setResults] = useState<LocationResult[]>([]);
   const [panels, setPanels] = useState(initial?.panels ?? 10);
   const [wattage, setWattage] = useState(initial?.panelWattage ?? 550);
   const [orientation, setOrientation] = useState<PanelOrientation>(initial?.orientation ?? "south");
   const [tilt, setTilt] = useState(initial?.roofTilt ?? 30);
-  const [systemType, setSystemType] = useState<SolarSystemType>(initial?.systemType ?? "off-grid");
-  const [efficiency, setEfficiency] = useState(initial?.systemEfficiency ?? 90);
+  const [maxOutput, setMaxOutput] = useState(initial?.maxOutputKw ?? 0);
+  const [step, setStep] = useState(0);
+  const [tiltSource, setTiltSource] = useState<"user" | "estimated">(initial?.tiltSource ?? "user");
+  const [directionSource, setDirectionSource] = useState<"user" | "estimated">(initial?.directionSource ?? "user");
+  const [inverterSource, setInverterSource] = useState<"user" | "estimated">(initial?.inverterSource ?? "user");
+  const [shading, setShading] = useState<"none" | "some" | "heavy" | "unknown">(initial?.shadingLevel ?? "unknown");
+  const [panelBrand, setPanelBrand] = useState(initial?.panelBrand ?? "");
+  const [panelModel, setPanelModel] = useState(initial?.panelModel ?? "");
+  const [advancedOpen, setAdvancedOpen] = useState(Boolean(initial?.panelBrand || initial?.panelModel));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const orientationLabels: Record<string, string> = language === "ur" ? { south: "جنوب", "south-east": "جنوب مشرق", "south-west": "جنوب مغرب", east: "مشرق", west: "مغرب", north: "شمال" } : {};
-  const systemLabels: Record<SolarSystemType, string> = language === "ur" ? { "off-grid": "آف گرڈ", hybrid: "ہائبرڈ", "net-metering": "نیٹ میٹرنگ" } : { "off-grid": "Off grid", hybrid: "Hybrid", "net-metering": "Net metering" };
+  const orientationLabels: Record<string, string> = language === "ur" ? { south: "جنوب", "south-east": "جنوب مشرق", "south-west": "جنوب مغرب", east: "مشرق", west: "مغرب", north: "شمال", "north-east": "شمال مشرق", "north-west": "شمال مغرب" } : {};
+  const directions: Array<[PanelOrientation, string, string]> = [["north","N","↑"],["north-east","NE","↗"],["east","E","→"],["south-east","SE","↘"],["south","S","↓"],["south-west","SW","↙"],["west","W","←"],["north-west","NW","↖"]];
+  const dcSize = Math.max(0, panels * wattage / 1000);
 
   async function searchCity() {
     if (city.trim().length < 2) return;
@@ -427,6 +437,7 @@ function ForecastSetup({ initial, onSave, onCancel }: { initial: SolarForecastSe
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         };
         setLocation(next);
         setCity("");
@@ -452,19 +463,51 @@ function ForecastSetup({ initial, onSave, onCancel }: { initial: SolarForecastSe
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!location) { setError("Choose a city result or use GPS"); return; }
-    onSave({ locationName: location.name, latitude: location.latitude, longitude: location.longitude, locationAccuracy: location.accuracy, panels: Math.max(1, panels), panelWattage: Math.max(1, wattage), orientation, roofTilt: Math.max(0, Math.min(90, tilt)), systemType, systemEfficiency: Math.max(50, Math.min(100, efficiency)) });
+    onSave({ locationName: location.name, latitude: location.latitude, longitude: location.longitude, locationAccuracy: location.accuracy, timezone: location.timezone ?? initial?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, panels: Math.max(1, Math.min(5000, panels)), panelWattage: Math.max(50, Math.min(2000, wattage)), orientation, roofTilt: Math.max(0, Math.min(90, tilt)), tiltSource, directionSource, systemType: initial?.systemType ?? "hybrid", systemEfficiency: initial?.systemEfficiency ?? 90, maxOutputKw: Math.max(0.5, Math.min(500, maxOutput)), inverterSource, shadingLevel: shading, panelBrand: panelBrand.trim() || undefined, panelModel: panelModel.trim() || undefined });
   }
 
-  return <GlassCard accent="solar"><div className="mb-6"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400">{copy.assistant}</p><h2 className="mt-2 text-2xl font-bold text-white">{copy.setupTitle}</h2><p className="mt-2 text-sm text-slate-500">{copy.setupHint}</p></div><form onSubmit={submit} className="space-y-5">
-    <div><label className="mb-2 block text-sm font-semibold text-slate-300">{copy.exactLocation}</label><button type="button" onClick={useGps} disabled={busy} className="btn-solar w-full">◎ {busy ? copy.gettingLocation : copy.useGps}</button>{location && <div className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3"><p className="text-sm font-semibold text-emerald-300">✓ {coordinateLabel(location.latitude, location.longitude)}</p>{location.accuracy && <p className="mt-1 text-xs text-emerald-400/70">{copy.gpsAccuracy} ±{Math.round(location.accuracy)} {copy.metres}</p>}</div>}<details className="mt-3"><summary className="cursor-pointer text-xs text-slate-500">{copy.cityFallback}</summary><div className="mt-3 flex gap-2"><input value={city} onChange={(event) => { setCity(event.target.value); setLocation(null); }} className="input-solar" placeholder={copy.enterCity}/><button type="button" onClick={() => void searchCity()} className="rounded-xl bg-white/10 px-4 text-sm text-white">{copy.search}</button></div>{results.length > 0 && <div className="mt-2 space-y-1">{results.map((item) => <button key={item.id} type="button" onClick={() => { setLocation(item); setCity([item.name, item.admin1, item.country].filter(Boolean).join(", ")); setResults([]); }} className="block w-full rounded-xl bg-white/[0.05] p-3 text-start text-sm text-slate-300">{[item.name, item.admin1, item.country].filter(Boolean).join(", ")}</button>)}</div>}</details></div>
-    <div className="grid grid-cols-2 gap-3"><SetupNumber label={copy.panels} value={panels} min={1} max={100} onChange={setPanels}/><SetupNumber label={copy.wattage} value={wattage} min={50} max={1000} onChange={setWattage}/></div>
-    <div><label className="mb-2 block text-sm font-semibold text-slate-300">{copy.orientation}</label><select value={orientation} onChange={(event) => setOrientation(event.target.value as PanelOrientation)} className="input-solar">{["south", "south-east", "south-west", "east", "west", "north"].map((value) => <option key={value} value={value}>{orientationLabels[value] ?? value.replace("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}</option>)}</select></div>
-    <div className="grid grid-cols-2 gap-3"><SetupNumber label={copy.tilt} value={tilt} min={0} max={90} onChange={setTilt}/><SetupNumber label={copy.efficiency} value={efficiency} min={50} max={100} onChange={setEfficiency}/></div>
-    <div><label className="mb-2 block text-sm font-semibold text-slate-300">{copy.systemType}</label><div className="grid grid-cols-3 gap-2">{(["off-grid", "hybrid", "net-metering"] as SolarSystemType[]).map((value) => <button key={value} type="button" onClick={() => setSystemType(value)} className={`rounded-xl border p-3 text-xs ${systemType === value ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300" : "border-white/10 text-slate-500"}`}>{systemLabels[value]}</button>)}</div></div>
-    {error && <p className="rounded-xl bg-red-500/10 p-3 text-sm text-red-300">⚠️ {error}</p>}<div className="flex gap-2">{onCancel && <button type="button" onClick={onCancel} className="flex-1 rounded-xl border border-white/10 p-3 text-slate-400">{copy.cancel}</button>}<button type="submit" disabled={busy || !location} className="btn-solar flex-1">{busy ? copy.wait : copy.save}</button></div>
+  function nextStep() {
+    setError(null);
+    if (step === 0 && !location) { setError("Choose a location or use your current location."); return; }
+    if (step === 1 && (!Number.isFinite(panels) || panels < 1 || panels > 5000)) { setError("Please enter a panel quantity between 1 and 5,000."); return; }
+    if (step === 1 && (!Number.isFinite(wattage) || wattage < 50 || wattage > 2000)) { setError("Please enter a valid panel wattage between 50 W and 2,000 W."); return; }
+    if (step === 3 && (!Number.isFinite(maxOutput) || maxOutput < 0.5 || maxOutput > 500)) { setError("Please enter an inverter size between 0.5 kW and 500 kW, or choose I don’t know."); return; }
+    setStep((value) => Math.min(4, value + 1));
+  }
+
+  function estimateTilt() {
+    const estimated = Math.round(Math.max(5, Math.min(35, Math.abs(location?.latitude ?? 25) * 0.75)));
+    setTilt(estimated); setTiltSource("estimated");
+  }
+
+  function estimateDirection() {
+    setOrientation((location?.latitude ?? 1) >= 0 ? "south" : "north"); setDirectionSource("estimated");
+  }
+
+  function estimateInverter() {
+    setMaxOutput(Math.max(0.5, Math.round(dcSize * 0.8 * 2) / 2)); setInverterSource("estimated");
+  }
+
+  const directionName = orientationLabels[orientation] ?? orientation.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
+  const shadeName = { none: "No shade", some: "Some shade", heavy: "A lot of shade", unknown: "Not sure" }[shading];
+  const titles = ["Where is your solar system?", "Tell us about your panels", "How are your panels mounted?", "Inverter and shade", "Your Solar System"];
+
+  return <GlassCard accent="solar" className="overflow-hidden !p-0"><form onSubmit={submit}>
+    <div className="border-b border-white/[.07] px-5 py-5 sm:px-7"><div className="flex items-center justify-between"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-emerald-400">Solar setup</p><span className="text-xs text-slate-500">{step + 1} / 5</span></div><div className="mt-3 flex gap-1.5">{titles.map((_, index) => <span key={index} className={`h-1 flex-1 rounded-full ${index <= step ? "bg-emerald-400" : "bg-white/[.08]"}`}/>)}</div></div>
+    <div className="min-h-[430px] p-5 sm:p-7"><h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{titles[step]}</h2>
+      {step === 0 && <div className="mt-7 space-y-4"><button type="button" onClick={useGps} disabled={busy} className="btn-solar w-full py-4">⌖ {busy ? "Finding your location…" : "Use my current location"}</button><div className="flex items-center gap-3 text-xs text-slate-600"><span className="h-px flex-1 bg-white/[.08]"/>or search manually<span className="h-px flex-1 bg-white/[.08]"/></div><div className="flex gap-2"><input value={city} onChange={(event) => { setCity(event.target.value); setLocation(null); }} className="input-solar" placeholder="City or area"/><button type="button" onClick={() => void searchCity()} className="rounded-xl bg-white/10 px-5 text-sm font-semibold text-white">Search</button></div>{results.length > 0 && <div className="space-y-1">{results.map((item) => <button key={item.id} type="button" onClick={() => { const name=[item.name,item.admin1,item.country].filter(Boolean).join(", ");setLocation({...item,name});setCity(name);setResults([]); }} className="block w-full rounded-xl border border-white/[.07] bg-white/[.03] p-3 text-start text-sm text-slate-300 hover:bg-white/[.06]">📍 {[item.name,item.admin1,item.country].filter(Boolean).join(", ")}</button>)}</div>}{location && <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[.08] p-4"><p className="font-semibold text-emerald-300">✓ {location.name}</p><p className="mt-1 text-xs text-slate-500">Location saved securely on this device</p></div>}</div>}
+      {step === 1 && <div className="mt-7 space-y-6"><div className="grid gap-4 sm:grid-cols-2"><SetupNumber label="How many panels do you have?" value={panels} min={1} max={5000} onChange={setPanels}/><SetupNumber label="Wattage of each panel" value={wattage} min={50} max={2000} step={1} suffix="W" onChange={setWattage}/></div><div><p className="mb-2 text-xs font-medium text-slate-500">Common panel wattages</p><div className="flex flex-wrap gap-2">{[450,500,550,580,600,650,700,725].map((value)=><button key={value} type="button" onClick={()=>setWattage(value)} className={`rounded-full border px-3 py-2 text-xs ${wattage===value?"border-emerald-400/40 bg-emerald-400/10 text-emerald-300":"border-white/[.08] text-slate-400"}`}>{value} W</button>)}</div></div><div className="rounded-2xl border border-amber-300/15 bg-amber-300/[.06] p-5"><p className="text-xs uppercase tracking-wider text-amber-200/60">Your system size</p><p className="mt-2 text-3xl font-bold text-amber-200">{dcSize.toFixed(2)} kWp</p><p className="mt-1 text-sm text-slate-500">{panels} × {wattage} W installed panel capacity</p></div><details open={advancedOpen} onToggle={(event)=>setAdvancedOpen(event.currentTarget.open)}><summary className="cursor-pointer text-sm text-slate-500">Optional: panel brand or model</summary><div className="mt-3 grid gap-3 sm:grid-cols-2"><input value={panelBrand} onChange={e=>setPanelBrand(e.target.value)} className="input-solar" placeholder="Brand, e.g. Jinko"/><input value={panelModel} onChange={e=>setPanelModel(e.target.value)} className="input-solar" placeholder="Model (optional)"/></div></details></div>}
+      {step === 2 && <div className="mt-7 space-y-7"><div><div className="flex items-center justify-between"><div><p className="font-semibold text-slate-200">Do you know your panel tilt?</p><p className="mt-1 text-xs text-slate-500">Angle of your panels from the ground.</p></div>{tiltSource==="estimated"&&<Estimated/>}</div><div className="mt-4 flex items-center gap-4"><input type="range" min="0" max="45" value={Math.min(45,tilt)} onChange={e=>{setTilt(Number(e.target.value));setTiltSource("user");}} className="w-full accent-emerald-400"/><strong className="w-14 text-end text-2xl text-white">{tilt}°</strong></div><button type="button" onClick={estimateTilt} className="mt-3 text-xs text-emerald-400">I don’t know — estimate it</button></div><div><div className="flex items-center justify-between"><p className="font-semibold text-slate-200">Which direction do your panels face?</p>{directionSource==="estimated"&&<Estimated/>}</div><div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-8">{directions.map(([value,label,arrow])=><button key={value} type="button" onClick={()=>{setOrientation(value);setDirectionSource("user");}} className={`rounded-xl border p-3 text-center ${orientation===value?"border-emerald-400/40 bg-emerald-400/10 text-emerald-300":"border-white/[.08] text-slate-500"}`}><span className="block text-xl">{arrow}</span><span className="mt-1 block text-[10px] font-semibold">{label}</span></button>)}</div><button type="button" onClick={estimateDirection} className="mt-3 text-xs text-emerald-400">I don’t know — estimate it</button></div></div>}
+      {step === 3 && <div className="mt-7 space-y-7"><div><div className="flex items-center justify-between"><div><p className="font-semibold text-slate-200">What is your inverter size?</p><p className="mt-1 text-xs text-slate-500">Maximum AC power—not panel efficiency.</p></div>{inverterSource==="estimated"&&<Estimated/>}</div><div className="mt-4 flex flex-wrap gap-2">{[3,5,6,8,10,12,15].map(value=><button key={value} type="button" onClick={()=>{setMaxOutput(value);setInverterSource("user");}} className={`rounded-full border px-4 py-2 text-sm ${maxOutput===value?"border-emerald-400/40 bg-emerald-400/10 text-emerald-300":"border-white/[.08] text-slate-400"}`}>{value} kW</button>)}</div><div className="mt-3 max-w-xs"><SetupNumber label="Custom inverter size" value={maxOutput} min={0.5} max={500} step={0.1} suffix="kW" onChange={value=>{setMaxOutput(value);setInverterSource("user");}}/></div><button type="button" onClick={estimateInverter} className="mt-3 text-xs text-emerald-400">I don’t know — estimate it</button></div><div><p className="font-semibold text-slate-200">How much shade reaches your panels?</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{([{id:"none",icon:"☀️",title:"No shade",text:"Direct sunlight most of the day"},{id:"some",icon:"🌤️",title:"Some shade",text:"Shade during part of the day"},{id:"heavy",icon:"🌥️",title:"A lot of shade",text:"Shaded for a significant time"},{id:"unknown",icon:"◌",title:"Not sure",text:"We’ll use a cautious estimate"}] as const).map(item=><button key={item.id} type="button" onClick={()=>setShading(item.id)} className={`rounded-2xl border p-4 text-start ${shading===item.id?"border-emerald-400/40 bg-emerald-400/[.08]":"border-white/[.08] bg-white/[.02]"}`}><span className="text-xl">{item.icon}</span><strong className="ms-2 text-sm text-white">{item.title}</strong><p className="mt-1 text-xs text-slate-500">{item.text}</p></button>)}</div></div></div>}
+      {step === 4 && <div className="mt-7"><div className="grid gap-3 sm:grid-cols-2"><SummaryItem icon="📍" label="Location" value={location?.name??"—"}/><SummaryItem icon="☀️" label="Panels" value={`${panels} × ${wattage} W`}/><SummaryItem icon="⚡" label="System size" value={`${dcSize.toFixed(2)} kWp`}/><SummaryItem icon="📐" label="Tilt" value={`${tilt}°`} estimated={tiltSource==="estimated"}/><SummaryItem icon="🧭" label="Direction" value={directionName} estimated={directionSource==="estimated"}/><SummaryItem icon="🔌" label="Inverter" value={`${maxOutput.toFixed(1)} kW`} estimated={inverterSource==="estimated"}/><SummaryItem icon="🌳" label="Shading" value={shadeName}/></div><p className="mt-5 rounded-xl bg-white/[.03] p-3 text-xs leading-5 text-slate-500">kWp is installed panel capacity. kW is power at one moment. kWh is energy generated over time.</p></div>}
+      {error && <p className="mt-5 rounded-xl bg-red-500/10 p-3 text-sm text-red-300">⚠️ {error}</p>}
+    </div><div className="flex gap-2 border-t border-white/[.07] px-5 py-4 sm:px-7">{step>0?<button type="button" onClick={()=>{setError(null);setStep(value=>value-1);}} className="flex-1 rounded-xl border border-white/[.1] p-3 text-slate-300">Back</button>:onCancel?<button type="button" onClick={onCancel} className="flex-1 rounded-xl border border-white/[.1] p-3 text-slate-300">Cancel</button>:null}{step<4?<button type="button" onClick={nextStep} className="btn-solar flex-1">Continue</button>:<button type="submit" className="btn-solar flex-1">Save & forecast</button>}</div>
   </form></GlassCard>;
 }
 
-function SetupNumber({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
-  return <label className="text-sm font-semibold text-slate-300">{label}<input type="number" value={value} min={min} max={max} onChange={(event) => onChange(Number(event.target.value))} className="input-solar mt-2"/></label>;
+function SetupNumber({ label, value, min, max, step, suffix, onChange }: { label: string; value: number; min: number; max: number; step?: number; suffix?: string; onChange: (value: number) => void }) {
+  return <label className="text-sm font-semibold text-slate-300">{label}<span className="relative mt-2 block"><input type="number" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} className="input-solar !pe-14"/>{suffix&&<span className="pointer-events-none absolute inset-y-0 end-4 flex items-center text-xs text-slate-500">{suffix}</span>}</span></label>;
 }
+
+function Estimated(){return <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[10px] font-semibold text-amber-200">Estimated</span>}
+function SummaryItem({icon,label,value,estimated=false}:{icon:string;label:string;value:string;estimated?:boolean}){return <div className="rounded-2xl border border-white/[.07] bg-white/[.025] p-4"><p className="text-xs text-slate-500">{icon} {label}</p><div className="mt-2 flex items-center justify-between gap-2"><strong className="text-white">{value}</strong>{estimated&&<Estimated/>}</div></div>}
