@@ -122,13 +122,6 @@ export const translations = {
     installAppHint: "ہوم اسکرین پر شامل کریں — Android پر ایپ کی طرح کھلے گا",
     install: "انسٹال",
     installing: "انسٹال ہو رہا ہے…",
-    dataStale: "لائیو ڈیٹا میں تاخیر ہو رہی ہے",
-    refreshNow: "ابھی تازہ کریں",
-    backupData: "ڈیٹا بیک اپ",
-    backupHint: "سولر سیٹ اپ، آلات، مقامات اور سیکھنے کا ڈیٹا محفوظ کریں",
-    downloadBackup: "بیک اپ ڈاؤن لوڈ کریں",
-    restoreBackup: "بیک اپ بحال کریں",
-    restoreDone: "بیک اپ بحال ہو گیا",
   },
   en: {
     appTitle: "Knox Solar",
@@ -250,13 +243,6 @@ export const translations = {
     installAppHint: "Add to your home screen — opens like an app on Android",
     install: "Install",
     installing: "Installing…",
-    dataStale: "Live data is delayed",
-    refreshNow: "Refresh now",
-    backupData: "Data backup",
-    backupHint: "Save your solar setup, appliances, sites, alerts, and learning data",
-    downloadBackup: "Download backup",
-    restoreBackup: "Restore backup",
-    restoreDone: "Backup restored",
   },
 } as const;
 

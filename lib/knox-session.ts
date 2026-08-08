@@ -6,11 +6,9 @@ export const KNOX_SESSION_COOKIE = "knox_session";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 function getKey(): Buffer {
-  const configuredSecret = process.env.SESSION_SECRET;
-  if (!configuredSecret && process.env.NODE_ENV === "production") {
-    throw new Error("SESSION_SECRET is required in production");
-  }
-  const secret = configuredSecret ?? "knox-local-dev-secret-change-this";
+  const secret =
+    process.env.SESSION_SECRET ??
+    "knox-local-dev-secret-change-this-on-vercel";
   return crypto.createHash("sha256").update(secret).digest();
 }
 
@@ -63,6 +61,5 @@ export function sessionCookieOptions() {
     sameSite: "lax" as const,
     path: "/",
     maxAge: COOKIE_MAX_AGE,
-    priority: "high" as const,
   };
 }

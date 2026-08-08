@@ -1,6 +1,5 @@
 import axios from "axios";
 import crypto from "crypto";
-import { AsyncLocalStorage } from "node:async_hooks";
 
 /** ShineMonitor cloud API base used by the Knox Android app. */
 const API_BASE = "http://android.shinemonitor.com/public/";
@@ -79,38 +78,10 @@ interface ApiResponse<T = unknown> {
 type FlowEntry = { par?: string; val?: string | number; unit?: string };
 type LastDataEntry = { title?: string; val?: string | number; unit?: string };
 
-interface KnoxRequestState {
-  session: Session | null;
-  connection: ConnectionConfig | null;
-  device: DeviceInfo | null;
-}
-
-const requestState = new AsyncLocalStorage<KnoxRequestState>();
-
-function state(): KnoxRequestState {
-  const current = requestState.getStore();
-  if (!current) {
-    throw new KnoxError("Knox state used outside a request context");
-  }
-  return current;
-}
-
-/** Run Knox operations with state isolated to this request. */
-export function withKnoxState<T>(
-  initial: KnoxPersistedState | null,
-  operation: () => T,
-): T {
-  return requestState.run(
-    initial
-      ? {
-          session: { ...initial.session },
-          connection: { ...initial.connection },
-          device: { ...initial.device },
-        }
-      : { session: null, connection: null, device: null },
-    operation,
-  );
-}
+/** In-memory session — token/secret are never exposed to the client. */
+let session: Session | null = null;
+let connection: ConnectionConfig | null = null;
+let device: DeviceInfo | null = null;
 
 const http = axios.create({
   timeout: 30000,
@@ -184,7 +155,7 @@ async function applyAuthResponse(data: ApiResponse, label: string): Promise<void
     throw new KnoxError("Authentication response missing token or secret");
   }
 
-  state().session = {
+  session = {
     token: dat.token,
     secret: dat.secret,
     expiresAt: Date.now() + expire * 1000 - 60_000,
@@ -282,17 +253,16 @@ async function apiCall<T = unknown>(
 ): Promise<T> {
   await ensureSession();
 
-  const current = state();
-  if (!current.session) {
+  if (!session) {
     throw new KnoxError("Not authenticated");
   }
 
   const salt = nowMillis();
   const fullAction = `${actionParams}${appSuffix()}`;
-  const sign = sha1Hex(`${salt}${current.session.secret}${current.session.token}${fullAction}`);
+  const sign = sha1Hex(`${salt}${session.secret}${session.token}${fullAction}`);
   const url =
     `${API_BASE}?sign=${sign}&salt=${salt}` +
-    `&token=${encodeURIComponent(current.session.token)}${fullAction}`;
+    `&token=${encodeURIComponent(session.token)}${fullAction}`;
 
   try {
     const { data } = await http.get<ApiResponse<T>>(url, {
@@ -307,7 +277,7 @@ async function apiCall<T = unknown>(
   } catch (error) {
     if (!retried && isTokenError(error)) {
       console.log("[Knox] Token expired — refreshing and retrying…");
-      current.session = null;
+      session = null;
       await ensureSession();
       return apiCall<T>(actionParams, true);
     }
@@ -316,17 +286,16 @@ async function apiCall<T = unknown>(
 }
 
 async function ensureSession(): Promise<void> {
-  const current = state();
-  if (current.session && Date.now() < current.session.expiresAt) {
+  if (session && Date.now() < session.expiresAt) {
     return;
   }
 
-  if (!current.connection) {
+  if (!connection) {
     throw new KnoxError("Not connected");
   }
 
-  const username = current.connection.username ?? current.connection.pn;
-  const password = current.connection.password ?? current.connection.pn;
+  const username = connection.username ?? connection.pn;
+  const password = connection.password ?? connection.pn;
 
   await authenticate(username, password);
 }
@@ -380,32 +349,10 @@ function readFlowField(
 }
 
 function readFlowPower(entries: FlowEntry[] | undefined, keys: string[]): FieldReading {
-  const matches = keys.flatMap((key) => {
-    const keyLower = key.toLowerCase();
-    const match = entries?.find((entry) => {
-      const par = entry.par?.toLowerCase() ?? "";
-      return par === keyLower || par.includes(keyLower);
-    });
-    return match?.val !== undefined && match.val !== null && match.val !== "" && match.val !== "-"
-      ? [match]
-      : [];
-  });
+  const field = readFlowField(entries, keys);
+  if (field.value !== "—") return { ...field, unit: field.unit || "kW" };
 
-  // Some Knox inverters return multiple PV power aliases. One alias can stay at
-  // zero while another (usually pv_charging_power) contains the live reading.
-  const selected = matches.find((entry) => {
-    const value = Number.parseFloat(String(entry.val));
-    return Number.isFinite(value) && value !== 0;
-  }) ?? matches[0];
-
-  if (selected) {
-    return { value: String(selected.val), unit: selected.unit || "kW" };
-  }
-
-  const first = entries?.find((entry) => {
-    const par = entry.par?.toLowerCase() ?? "";
-    return par.includes("power") && entry.val !== undefined && entry.val !== "-" && entry.val !== "";
-  });
+  const first = entries?.find((e) => e.val !== undefined && e.val !== "-" && e.val !== "");
   if (first) {
     return { value: String(first.val), unit: first.unit ?? "kW" };
   }
@@ -475,17 +422,14 @@ export class KnoxError extends Error {
 }
 
 export function isConnected(): boolean {
-  const current = state();
-  return current.connection !== null && current.device !== null;
+  return connection !== null && device !== null;
 }
 
 export function getConnectionInfo(): ConnectionConfig | null {
-  const { connection } = state();
   return connection ? { ...connection, password: undefined } : null;
 }
 
 export function getDeviceInfo(): { pn: string; sn: string } | null {
-  const { device } = state();
   if (!device) return null;
   return { pn: device.pn, sn: device.sn };
 }
@@ -503,9 +447,8 @@ export async function connect(config: ConnectionConfig): Promise<{
   const hasCredentials = Boolean(password && password.length > 0);
 
   if (hasCredentials) {
-    const current = state();
-    current.session = null;
-    current.device = null;
+    session = null;
+    device = null;
 
     const explicitUser = config.username?.trim();
     const loginDiffersFromPn =
@@ -518,18 +461,18 @@ export async function connect(config: ConnectionConfig): Promise<{
         explicitUser,
       );
 
-      current.connection = {
+      connection = {
         pn,
         username: resolvedUsername,
         password: password!,
       };
 
-      current.device = await resolveDevice(pn);
+      device = await resolveDevice(pn);
       return { authRequired: false, message: "Connected with credentials" };
     } catch (error) {
-      current.connection = null;
-      current.session = null;
-      current.device = null;
+      connection = null;
+      session = null;
+      device = null;
 
       if (error instanceof KnoxError) {
         const code = error.code;
@@ -552,19 +495,18 @@ export async function connect(config: ConnectionConfig): Promise<{
     }
   }
 
-  const current = state();
-  current.connection = { pn, username: pn, password: pn };
-  current.session = null;
-  current.device = null;
+  connection = { pn, username: pn, password: pn };
+  session = null;
+  device = null;
 
   try {
     await authenticate(pn, pn);
-    current.device = await resolveDevice(pn);
+    device = await resolveDevice(pn);
     return { authRequired: false, message: "Connected with datalogger ID" };
   } catch (error) {
-    current.connection = null;
-    current.session = null;
-    current.device = null;
+    connection = null;
+    session = null;
+    device = null;
 
     if (error instanceof KnoxError) {
       const authErrors = new Set([0x0010, 0x0105, 16, 261]);
@@ -581,10 +523,9 @@ export async function connect(config: ConnectionConfig): Promise<{
 }
 
 export function disconnect(): void {
-  const current = state();
-  current.connection = null;
-  current.session = null;
-  current.device = null;
+  connection = null;
+  session = null;
+  device = null;
 }
 
 /** Serializable server state for cookie storage (Vercel / serverless). */
@@ -595,7 +536,6 @@ export interface KnoxPersistedState {
 }
 
 export function exportKnoxState(): KnoxPersistedState | null {
-  const { session, connection, device } = state();
   if (!session || !connection || !device) return null;
   return {
     session: { ...session },
@@ -605,16 +545,13 @@ export function exportKnoxState(): KnoxPersistedState | null {
 }
 
 export function restoreKnoxState(state: KnoxPersistedState): void {
-  const current = requestState.getStore();
-  if (!current) throw new KnoxError("Knox state used outside a request context");
-  current.session = { ...state.session };
-  current.connection = { ...state.connection };
-  current.device = { ...state.device };
+  session = { ...state.session };
+  connection = { ...state.connection };
+  device = { ...state.device };
 }
 
 /** Fetch live inverter metrics — always hits Knox cloud, never cached. */
 export async function getLiveData(): Promise<LiveData> {
-  const { connection, device } = state();
   if (!connection || !device) {
     throw new KnoxError("Not connected — please connect first");
   }

@@ -1,13 +1,15 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
+  disconnect,
   exportKnoxState,
-  type KnoxPersistedState,
-  withKnoxState,
+  restoreKnoxState,
 } from "./knox";
 import {
   sealKnoxState,
   sessionCookieOptions,
-  readSessionCookie,
+  unsealKnoxState,
+  KNOX_SESSION_COOKIE,
 } from "./knox-session";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +35,7 @@ export function apiJson(
 
   if (init?.clearSession) {
     response.cookies.set(opts.name, "", { ...opts, maxAge: 0 });
+    disconnect();
     return response;
   }
 
@@ -46,12 +49,15 @@ export function apiJson(
   return response;
 }
 
-export function withRequestKnoxState<T>(
-  request: Request,
-  operation: (hasSession: boolean) => T,
-): T {
-  const saved: KnoxPersistedState | null = readSessionCookie(
-    request.headers.get("cookie"),
-  );
-  return withKnoxState(saved, () => operation(saved !== null));
+export async function hydrateKnoxFromRequest(): Promise<boolean> {
+  disconnect();
+  const cookieStore = await cookies();
+  const value = cookieStore.get(KNOX_SESSION_COOKIE)?.value;
+  if (!value) return false;
+
+  const state = unsealKnoxState(value);
+  if (!state) return false;
+
+  restoreKnoxState(state);
+  return true;
 }

@@ -21,8 +21,7 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void checkStatus(), 0);
-    return () => window.clearTimeout(timer);
+    checkStatus();
   }, [checkStatus]);
 
   if (connected === null) {
