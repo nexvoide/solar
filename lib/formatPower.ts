@@ -21,14 +21,21 @@ export function formatPower(
   const kw = toKw(value, unit);
   if (kw === null) return value === "—" ? "—" : `${value} ${unit}`.trim();
 
+  return formatPowerKw(kw, preference);
+}
+
+/** Format a value that is already normalized to kilowatts. */
+export function formatPowerKw(kw: number, preference: UnitPreference): string {
+  const normalizedKw = Math.abs(kw) < 0.02 ? 0 : kw;
+
   if (preference === "kW") {
-    return `${kw.toFixed(2)} kW`;
+    return `${normalizedKw.toFixed(2)} kW`;
   }
   if (preference === "W") {
-    return `${(kw * 1000).toFixed(0)} W`;
+    return `${(normalizedKw * 1000).toFixed(0)} W`;
   }
 
   // auto: show kW when ≥ 1, otherwise W
-  if (Math.abs(kw) >= 1) return `${kw.toFixed(2)} kW`;
-  return `${(kw * 1000).toFixed(0)} W`;
+  if (Math.abs(normalizedKw) >= 1) return `${normalizedKw.toFixed(2)} kW`;
+  return `${(normalizedKw * 1000).toFixed(0)} W`;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useSettings } from "@/components/SettingsProvider";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -43,6 +44,15 @@ export default function PwaProvider() {
 
     const register = async () => {
       try {
+        if (process.env.NODE_ENV !== "production") {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.filter((key) => key.startsWith("knox-solar-")).map((key) => caches.delete(key)));
+          }
+          return;
+        }
         await navigator.serviceWorker.register("/sw.js", { scope: "/" });
       } catch (error) {
         console.warn("[PWA] Service worker registration failed:", error);
@@ -86,7 +96,7 @@ export default function PwaProvider() {
       aria-label={t("installApp")}
     >
       <div className="mx-auto flex max-w-lg items-center gap-3 rounded-2xl border border-[#5dffc0]/25 bg-[#0d1520]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl">
-        <img
+        <Image
           src="/icons/icon-192.png"
           alt=""
           width={48}

@@ -48,9 +48,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setLanguageState(readStoredLang());
-    setUnitState(readStoredUnit());
-    setReady(true);
+    const timer = window.setTimeout(() => {
+      setLanguageState(readStoredLang());
+      setUnitState(readStoredUnit());
+      setReady(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const dir: "rtl" | "ltr" = language === "ur" ? "rtl" : "ltr";

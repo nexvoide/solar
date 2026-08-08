@@ -1,4 +1,4 @@
-const CACHE_VERSION = "knox-solar-v1";
+const CACHE_VERSION = "knox-solar-v2";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 const PRECACHE_URLS = ["/", "/icons/icon-192.png", "/icons/icon-512.png"];
@@ -32,6 +32,22 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(fetch(request));
+    return;
+  }
+
+  // Next.js development assets use stable URLs, so cache-first would serve old code.
+  // Production assets are content-hashed and also work correctly with network-first.
+  if (url.pathname.startsWith("/_next/")) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            caches.open(STATIC_CACHE).then((cache) => cache.put(request, response.clone()));
+          }
+          return response;
+        })
+        .catch(async () => (await caches.match(request)) ?? Response.error()),
+    );
     return;
   }
 

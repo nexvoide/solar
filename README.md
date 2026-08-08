@@ -35,6 +35,7 @@ Follow these steps once. After that, every code update redeploys automatically.
    | Name | Value |
    |------|--------|
    | `SESSION_SECRET` | Any long random text, e.g. `my-knox-solar-secret-2026-abc123xyz` |
+   | `GEMINI_API_KEY` | Your free API key from Google AI Studio (optional; enables AI energy insights) |
 
    (This keeps your login session secure on the server.)
 
@@ -70,3 +71,15 @@ In Vercel: **Project → Settings → Domains** → add your domain and follow t
 - Updates every 3 seconds
 - Read-only — never sends commands to your inverter
 - Works as a phone app (PWA) after install
+- Shows a concise Gemini-powered energy insight without exposing the API key to the browser
+- Turns the calculated hourly solar forecast into an AI daily plan with confidence, weather timing, and appliance suggestions
+
+## Optional Gemini energy insights
+
+Create a free Gemini API key in Google AI Studio and add it to `.env.local` when running locally:
+
+```bash
+GEMINI_API_KEY=your_key_here
+```
+
+The dashboard sends only energy readings and recent numeric trends to Gemini—never Knox credentials or device identifiers. Insights are cached for 15 minutes to conserve the free quota. A meaningful state change (such as a new warning or a switch between surplus and deficit) refreshes the analysis sooner. If Gemini is not configured or unavailable, the card automatically uses an on-device rules-based insight.
