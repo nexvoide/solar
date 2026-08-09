@@ -404,6 +404,40 @@ select {
 
 .ai-spark { text-shadow: 0 0 14px rgba(196,181,253,.8); }
 
+.ai-feature-icon {
+  --ai-icon-rgb: 167, 139, 250;
+  position: relative;
+  display: inline-flex;
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 3rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(var(--ai-icon-rgb), .3);
+  border-radius: 1rem;
+  color: rgb(var(--ai-icon-rgb));
+  background: radial-gradient(circle at 50% 45%, rgba(var(--ai-icon-rgb), .18), rgba(var(--ai-icon-rgb), .04) 68%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.09), 0 0 24px rgba(var(--ai-icon-rgb), .12);
+}
+
+.ai-feature-icon-emerald { --ai-icon-rgb: 110, 231, 183; }
+.ai-feature-icon-sky { --ai-icon-rgb: 125, 211, 252; }
+.ai-feature-icon svg { width: 1.85rem; height: 1.85rem; animation: aiBrainBreathe 2.8s ease-in-out infinite; }
+.ai-feature-ring { position: absolute; inset: -.32rem; border: 1px solid rgba(var(--ai-icon-rgb), .2); border-radius: 1.25rem; animation: aiRingPulse 2.4s ease-out infinite; }
+.ai-feature-spark { position: absolute; color: rgb(var(--ai-icon-rgb)); font-size: .55rem; line-height: 1; text-shadow: 0 0 8px rgba(var(--ai-icon-rgb), .9); animation: aiSparkOrbit 3.2s ease-in-out infinite; }
+.ai-feature-spark-one { inset-inline-end: -.18rem; top: .2rem; }
+.ai-feature-spark-two { inset-inline-start: .15rem; bottom: .12rem; animation-delay: -1.4s; }
+
+@keyframes aiBrainBreathe { 0%,100% { opacity: .82; transform: scale(.94); filter: drop-shadow(0 0 2px rgba(var(--ai-icon-rgb), .25)); } 50% { opacity: 1; transform: scale(1.04); filter: drop-shadow(0 0 7px rgba(var(--ai-icon-rgb), .65)); } }
+@keyframes aiRingPulse { 0% { opacity: .7; transform: scale(.88); } 75%,100% { opacity: 0; transform: scale(1.18); } }
+@keyframes aiSparkOrbit { 0%,100% { opacity: .35; transform: translate(0, 1px) scale(.8) rotate(0); } 50% { opacity: 1; transform: translate(2px, -2px) scale(1.2) rotate(90deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-feature-icon svg,
+  .ai-feature-ring,
+  .ai-feature-spark { animation: none; }
+}
+
 .ai-plan-marker {
   position: relative;
   display: block;

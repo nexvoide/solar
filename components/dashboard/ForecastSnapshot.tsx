@@ -18,6 +18,7 @@ import type { LiveData } from "@/lib/knox";
 import { useSettings } from "@/components/SettingsProvider";
 import { applianceNames, forecastCopy } from "@/lib/i18n/forecast";
 import { DEFAULT_RULES, ENERGY_RULES_KEY, readLocal, type NotificationRules } from "@/lib/energy-platform";
+import { notificationsGranted, showNotificationSafely } from "@/lib/browser-notifications";
 import { formatPowerKw } from "@/lib/formatPower";
 
 const SETTINGS_KEY = "knox_solar_forecast_settings_v1";
@@ -107,13 +108,13 @@ export default function ForecastSnapshot({ data, onOpen }: { data: LiveData; onO
   }, [actual, calibration, data.fetchedAt, settings, weather]);
 
   useEffect(() => {
-    if (!settings || !("Notification" in window) || Notification.permission !== "granted") return;
+    if (!settings || !notificationsGranted()) return;
     const rules = { ...DEFAULT_RULES, ...readLocal<NotificationRules>(ENERGY_RULES_KEY, DEFAULT_RULES) };
     if (!rules.enabled) return;
     const actual = parsePowerKw(data.pvPower.value, data.pvPower.unit) ?? 0;
     const load = parsePowerKw(data.loadPower.value, data.loadPower.unit) ?? 0;
     const surplusWatts = Math.max(0, actual - load) * 1000;
-    const notify = (key: string, body: string) => { if (sessionStorage.getItem(key)) return; new Notification("Knox Solar", { body, icon: "/icons/icon-192.png" }); sessionStorage.setItem(key, "1"); };
+    const notify = (key: string, body: string) => { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, "1"); void showNotificationSafely("Knox Solar", { body, icon: "/icons/icon-192.png" }); };
     if (rules.applianceReady) {
       const appliance = [...DEFAULT_APPLIANCES].sort((a,b)=>b.watts-a.watts).find((item)=>item.watts <= surplusWatts * .85);
       if (appliance) notify("knox_alert_appliance", `${appliance.name} can safely run with the current solar surplus.`);

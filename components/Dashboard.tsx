@@ -1,17 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import GlassCard, { MetricRow, SectionTitle } from "@/components/dashboard/GlassCard";
 import SettingsPanel from "@/components/SettingsPanel";
 import SolarForecastAssistant from "@/components/SolarForecastAssistant";
 import ForecastSnapshot from "@/components/dashboard/ForecastSnapshot";
 import AIEnergyInsight from "@/components/dashboard/AIEnergyInsight";
+import AISolarDoctor from "@/components/dashboard/AISolarDoctor";
+import PredictiveSolarHealth from "@/components/dashboard/PredictiveSolarHealth";
 import EnergyPlatformModal from "@/components/EnergyPlatformModal";
 import { useSettings } from "@/components/SettingsProvider";
 import { toKw } from "@/lib/formatPower";
-import { getStatusKey } from "@/lib/i18n/translations";
 import type { FieldReading, LiveData } from "@/lib/knox";
 import { DEFAULT_RULES, ENERGY_HISTORY_KEY, ENERGY_RULES_KEY, readLocal, recordHistory, type EnergyHistoryPoint, type NotificationRules } from "@/lib/energy-platform";
+import { notificationsGranted, showNotificationSafely } from "@/lib/browser-notifications";
 import { parsePowerKw } from "@/lib/solar-forecast";
 
 interface DashboardProps {
@@ -125,10 +127,10 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     const timer = window.setTimeout(() => {
       recordHistory(data);
       const rules = readLocal<NotificationRules>(ENERGY_RULES_KEY, DEFAULT_RULES);
-      if (!rules.enabled || !("Notification" in window) || Notification.permission !== "granted") return;
+      if (!rules.enabled || !notificationsGranted()) return;
       const pv = parsePowerKw(data.pvPower.value, data.pvPower.unit) ?? 0;
       const load = parsePowerKw(data.loadPower.value, data.loadPower.unit) ?? 0;
-      const notify = (key: string, message: string) => { if (sessionStorage.getItem(key)) return; new Notification("Knox Solar", { body: message, icon: "/icons/icon-192.png" }); sessionStorage.setItem(key, "1"); };
+      const notify = (key: string, message: string) => { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, "1"); void showNotificationSafely("Knox Solar", { body: message, icon: "/icons/icon-192.png" }); };
       if (pv >= rules.solarAboveKw) notify("knox_alert_solar", `Solar production reached ${pv.toFixed(1)} kW.`);
       if (pv - load >= rules.surplusAboveKw) notify("knox_alert_surplus", `${(pv-load).toFixed(1)} kW surplus solar is available.`);
       if (rules.inverterOffline && data.statusCode === 1) notify("knox_alert_offline", "The inverter appears to be offline.");
@@ -139,13 +141,7 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     return () => window.clearTimeout(timer);
   }, [data]);
 
-  const statusLabel = useMemo(() => {
-    if (!data) return "—";
-    return t(getStatusKey(data.statusCode, data.isGenerating));
-  }, [data, t]);
-
   const noProduction = data ? (toKw(data.pvPower.value, data.pvPower.unit) ?? 0) < 0.01 : false;
-  const panelTemp = data ? Number.parseFloat(data.temperature.value) : Number.NaN;
   const healthy = data ? !isNonZero(data.faultCode) && data.statusCode !== 2 && data.statusCode !== 5 : false;
 
   return (
@@ -200,23 +196,21 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
 
             <AIEnergyInsight data={data} />
 
+            <AISolarDoctor data={data} />
+
+            <PredictiveSolarHealth />
+
             {showForecast && <div dir="ltr"><SolarForecastAssistant data={data} onClose={closeForecast} /></div>}
 
-            <div className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
-              <GlassCard className="flex flex-col justify-between">
-                <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{t("deviceHealth")}</p><p className="mt-2 text-2xl font-semibold text-white">{healthy ? t("statusOnline") : statusLabel}</p></div><div className={`flex h-12 w-12 items-center justify-center rounded-full border ${healthy ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300" : "border-amber-400/20 bg-amber-400/10 text-amber-300"}`}>{healthy ? "✓" : "!"}</div></div>
-                <div className="mt-6 grid grid-cols-3 divide-x divide-white/[0.07] rtl:divide-x-reverse"><CompactMetric label={t("todayEnergy")} value={data.todayEnergy.value !== "—" ? `${data.todayEnergy.value} ${data.todayEnergy.unit || t("todayEnergyUnit")}` : "—"}/><CompactMetric label={t("gridStatus")} value={data.gridConnected ? t("gridConnected") : t("offline")}/><CompactMetric label={t("temperature")} value={Number.isFinite(panelTemp) ? `${panelTemp.toFixed(0)}°C` : "—"}/></div>
-              </GlassCard>
-              <GlassCard accent={noProduction ? "neutral" : "live"}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">{t("navOverview")}</p>
-                <p className="mt-3 text-lg font-medium leading-7 text-white">{noProduction ? t("noProduction") : healthy ? t("solarGeneratingHint") : t("machineStatusHint")}</p>
-                <p className="mt-4 text-xs text-slate-500">{t("updatedAgo")} {secondsAgo} {t("secondsAgo")}</p>
-              </GlassCard>
-            </div>
+            <GlassCard accent={noProduction ? "neutral" : "live"}>
+              <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">{t("navOverview")}</p><p className="mt-3 text-lg font-medium leading-7 text-white">{noProduction ? t("noProduction") : healthy ? t("solarGeneratingHint") : t("machineStatusHint")}</p></div><div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${healthy ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300" : "border-amber-400/20 bg-amber-400/10 text-amber-300"}`}>{healthy ? "✓" : "!"}</div></div>
+              <div className="mt-5 grid grid-cols-2 divide-x divide-white/[0.07] border-t border-white/[0.07] pt-4 rtl:divide-x-reverse"><CompactMetric label={t("gridStatus")} value={data.gridConnected ? t("gridConnected") : t("offline")}/><CompactMetric label={t("todayEnergy")} value={data.todayEnergy.value !== "—" ? `${data.todayEnergy.value} ${data.todayEnergy.unit || t("todayEnergyUnit")}` : "—"}/></div>
+              <p className="mt-4 text-xs text-slate-500">{t("updatedAgo")} {secondsAgo} {t("secondsAgo")}</p>
+            </GlassCard>
 
-            <button type="button" onClick={() => setEnergyCenterOpen(true)} className="forecast-launch group w-full rounded-[1.4rem] border border-white/[0.08] p-5 text-start sm:p-6"><span className="flex items-center justify-between gap-4"><span><span className="text-[11px] font-semibold uppercase tracking-[.2em] text-emerald-400">Knox Intelligence</span><span className="mt-1.5 block text-xl font-semibold text-white">Energy Center</span><span className="mt-1 block text-sm text-slate-500">Load simulator · Scheduler · Analytics · Health · Notifications · Sites</span></span><span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[.07] text-white transition group-hover:bg-emerald-300 group-hover:text-black">→</span></span></button>
+            <button type="button" onClick={() => setEnergyCenterOpen(true)} className="forecast-launch group w-full rounded-[1.4rem] border border-white/[0.08] p-5 text-start sm:p-6"><span className="flex items-center justify-between gap-4"><span><span className="text-[11px] font-semibold uppercase tracking-[.2em] text-emerald-400">Knox Solar</span><span className="mt-1.5 block text-xl font-semibold text-white">Notification Center</span><span className="mt-1 block text-sm text-slate-500">Configure solar, weather, and inverter alerts</span></span><span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[.07] text-white transition group-hover:bg-emerald-300 group-hover:text-black">→</span></span></button>
 
-            {energyCenterOpen && <EnergyPlatformModal data={data} onClose={closeEnergyCenter} />}
+            {energyCenterOpen && <EnergyPlatformModal onClose={closeEnergyCenter} />}
 
             {/* Optional technical details — hidden by default */}
             <button

@@ -7,6 +7,7 @@ import { ENERGY_HISTORY_KEY, readLocal, type EnergyHistoryPoint } from "@/lib/en
 import { localEnergyInsight, type EnergyInsight, type InsightReading } from "@/lib/ai-insight";
 import { parsePowerKw } from "@/lib/solar-forecast";
 import type { LiveData } from "@/lib/knox";
+import AnimatedAIIcon from "@/components/dashboard/AnimatedAIIcon";
 
 const CACHE_MS = 15 * 60_000;
 const CACHE_KEY = "knox_gemini_insight_v1";
@@ -69,11 +70,10 @@ export default function AIEnergyInsight({ data }: { data: LiveData }) {
   }, [fallback, language, reading, signature]);
 
   const insight = resolved?.language === language && resolved.signature === signature ? resolved.insight : fallback;
-  const colors = insight.severity === "warning" ? "text-amber-300 bg-amber-400/10 border-amber-400/20" : insight.severity === "good" ? "text-emerald-300 bg-emerald-400/10 border-emerald-400/20" : "text-sky-300 bg-sky-400/10 border-sky-400/20";
   const sourceLabel = insight.source === "gemini" ? "Gemini" : language === "ur" ? "مقامی تجزیہ" : "Local analysis";
   return <GlassCard className="ai-insight-card relative overflow-hidden">
     <div className="flex items-start gap-4">
-      <span className={`ai-orb flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-lg ${colors}`}><span>✦</span></span>
+      <AnimatedAIIcon tone="violet" label={language === "ur" ? "اے آئی سے چلنے والی توانائی کی معلومات" : "AI-powered energy insight"} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-300">{language === "ur" ? "Knox ذہانت" : "Knox Intelligence"}</p><span className="flex items-center gap-1.5 rounded-full border border-violet-300/15 bg-violet-300/[0.07] px-2.5 py-1 text-[10px] font-semibold text-violet-200">{loading ? <span className="h-2.5 w-2.5 animate-spin rounded-full border border-violet-300/30 border-t-violet-300" /> : <span className="h-1.5 w-1.5 rounded-full bg-violet-300 shadow-[0_0_8px_rgba(196,181,253,.8)]" />}{sourceLabel}</span></div>
         <h2 className="mt-2 text-lg font-semibold text-white">{insight.title}</h2>
