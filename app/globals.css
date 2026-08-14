@@ -165,6 +165,49 @@ select {
   box-shadow: 0 0 30px var(--solar-glow);
 }
 
+/* Noor voice agent */
+.noor-orbit::before,
+.noor-orbit::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(167, 139, 250, 0.16);
+}
+
+.noor-orbit::after {
+  inset: -8px;
+  border-color: rgba(251, 191, 36, 0.08);
+}
+
+.noor-orbit.is-active::before {
+  animation: noorPulse 1.8s ease-out infinite;
+}
+
+.noor-orbit.is-active::after {
+  animation: noorPulse 1.8s 0.45s ease-out infinite;
+}
+
+.noor-wave {
+  animation: noorWave 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes noorPulse {
+  0% { opacity: 0.9; transform: scale(0.92); }
+  100% { opacity: 0; transform: scale(1.28); }
+}
+
+@keyframes noorWave {
+  from { transform: scaleY(0.35); opacity: 0.55; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .noor-orbit.is-active::before,
+  .noor-orbit.is-active::after,
+  .noor-wave { animation: none; }
+}
+
 /* Connect screen mesh */
 .connect-mesh {
   background:

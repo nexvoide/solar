@@ -5,7 +5,7 @@ import { buildVoiceToolResults, VOICE_SYSTEM_INSTRUCTION, type VoiceToolContext 
 import { consumeVoiceQuota, voiceLimits } from "@/lib/ai/voice-quota";
 
 export const dynamic = "force-dynamic";
-const DEFAULT_FREE_MODEL = "gemini-2.5-flash-lite";
+const DEFAULT_FREE_MODEL = "gemini-3.5-flash-lite";
 const MAX_AUDIO_BYTES = 7_000_000;
 
 function clean(value: unknown, max: number): string | null { if (typeof value !== "string") return null; const result = value.trim().replace(/\s+/g, " "); return result && result.length <= max ? result : null; }
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         contents: [{ role: "user", parts }],
         generationConfig: {
-          temperature: 0.25, maxOutputTokens: 320, responseMimeType: "application/json",
+          maxOutputTokens: 320, responseMimeType: "application/json",
           responseSchema: {
             type: "OBJECT",
             properties: { transcript: { type: "STRING" }, response: { type: "STRING" }, language: { type: "STRING", enum: ["urdu", "roman_urdu", "english", "mixed"] } },
@@ -60,7 +60,12 @@ export async function POST(request: Request) {
         },
       }),
     });
-    if (!response.ok) return NextResponse.json({ error: response.status === 429 ? "Voice AI is temporarily unavailable because today's free voice limit has been reached." : "Voice assistant is temporarily unavailable. Please try again.", code: response.status === 429 ? "gemini_quota" : "gemini_unavailable" }, { status: 503 });
+    if (!response.ok) {
+      const failure = await response.json().catch(() => null) as { error?: { status?: string; message?: string } } | null;
+      console.error("[Noor Voice] Gemini request failed", response.status, failure?.error?.status, failure?.error?.message);
+      const unavailableModel = response.status === 404 || failure?.error?.status === "NOT_FOUND";
+      return NextResponse.json({ error: response.status === 429 ? "Voice AI is temporarily unavailable because today's free voice limit has been reached." : unavailableModel ? "Noor's configured Free Tier model is unavailable. Please update GEMINI_VOICE_MODEL." : "Voice assistant is temporarily unavailable. Please try again.", code: response.status === 429 ? "gemini_quota" : unavailableModel ? "model_unavailable" : "gemini_unavailable" }, { status: 503 });
+    }
     const result = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const raw = result.candidates?.[0]?.content?.parts?.[0]?.text; if (!raw) throw new Error("Empty response");
     const parsed = JSON.parse(raw) as Record<string, unknown>; const transcript = clean(parsed.transcript, 500) ?? query; const answer = clean(parsed.response, 900); const language = parsed.language;
