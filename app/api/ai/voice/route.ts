@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   let body: Record<string, unknown>;
   try { body = await request.json() as Record<string, unknown>; } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
   if (body.action === "synthesize") {
-    const transcript = clean(body.transcript, 900);
+    const transcript = clean(body.transcript, 1400);
     const language = clean(body.language, 20) ?? "mixed";
     if (!transcript) return NextResponse.json({ error: "Transcript is required" }, { status: 400 });
     const speech = await synthesizeNoor(apiKey, transcript, language);
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         contents: [{ role: "user", parts }],
         generationConfig: {
-          maxOutputTokens: 320, responseMimeType: "application/json",
+          maxOutputTokens: 520, responseMimeType: "application/json",
           responseSchema: {
             type: "OBJECT",
             properties: { transcript: { type: "STRING" }, response: { type: "STRING" }, language: { type: "STRING", enum: ["urdu", "roman_urdu", "english", "mixed"] } },
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     }
     const result = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const raw = result.candidates?.[0]?.content?.parts?.[0]?.text; if (!raw) throw new Error("Empty response");
-    const parsed = JSON.parse(raw) as Record<string, unknown>; const transcript = clean(parsed.transcript, 500) ?? query; const answer = clean(parsed.response, 900); const language = parsed.language;
+    const parsed = JSON.parse(raw) as Record<string, unknown>; const transcript = clean(parsed.transcript, 500) ?? query; const answer = clean(parsed.response, 1400); const language = parsed.language;
     if (!transcript || !answer || !["urdu", "roman_urdu", "english", "mixed"].includes(String(language))) throw new Error("Invalid response");
     return NextResponse.json({ transcript, response: answer, language, quota: { remainingSessions: quota.remainingSessions, remainingSeconds: quota.remainingSeconds } }, { headers: { "Cache-Control": "no-store" } });
   } catch { return NextResponse.json({ error: "Voice assistant is temporarily unavailable. Please try again.", code: "invalid_response" }, { status: 503 }); }
