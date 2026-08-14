@@ -4,17 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import GlassCard from "@/components/dashboard/GlassCard";
 import { useSettings } from "@/components/SettingsProvider";
 import { diagnoseSolar, type DoctorDiagnostic, type DoctorSample } from "@/lib/solar-doctor";
-import { calculateForecast, isDaylightTime, mergeCurrentWeatherObservation, ORIENTATION_AZIMUTH, parsePowerKw, type ForecastHour, type SolarForecastSettings, type WeatherHour } from "@/lib/solar-forecast";
+import { applyRealtimeAdjustment, calculateForecast, isDaylightTime, mergeCurrentWeatherObservation, ORIENTATION_AZIMUTH, parsePowerKw, type ForecastHour, type SolarForecastSettings, type WeatherHour } from "@/lib/solar-forecast";
 import type { LiveData } from "@/lib/knox";
 import AnimatedAIIcon from "@/components/dashboard/AnimatedAIIcon";
 
 const SETTINGS_KEY = "knox_solar_forecast_settings_v1";
+const LEARNING_KEY = "knox_solar_forecast_learning_v1";
 const SAMPLES_KEY = "knox_solar_doctor_samples_v1";
 const CACHE_KEY = "knox_gemini_solar_doctor_v1";
 const SAMPLE_INTERVAL = 5 * 60_000;
 const CACHE_MS = 15 * 60_000;
 
 interface WeatherResponse { current?: Record<string, number | string>; hourly?: Record<string, Array<number | string>>; daily?: { sunrise?: string[]; sunset?: string[] }; }
+interface ForecastLearning { calibration?: number; cloudCoefficient?: number; temperatureCoefficient?: number; }
 interface DoctorExplanation { headline: string; explanation: string; primaryCause: string; confidence: "high" | "medium" | "low"; recommendations: string[]; urgency: string; technicianRecommended: boolean; source: "gemini" | "local"; }
 
 function readLocal<T>(key: string, fallback: T): T { try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } }
@@ -33,14 +35,14 @@ function localExplanation(diagnostic: DoctorDiagnostic, language: "ur" | "en"): 
 
 export default function AISolarDoctor({ data }: { data: LiveData }) {
   const { language, dir } = useSettings();
-  const [settings, setSettings] = useState<SolarForecastSettings | null>(null); const [weather, setWeather] = useState<WeatherResponse | null>(null); const [samples, setSamples] = useState<DoctorSample[]>([]); const [open, setOpen] = useState(false); const [ai, setAi] = useState<{ signature: string; value: DoctorExplanation } | null>(null); const [aiLoading, setAiLoading] = useState(false);
-  useEffect(() => { const timer = window.setTimeout(() => { setSettings(readLocal<SolarForecastSettings | null>(SETTINGS_KEY, null)); setSamples(readLocal<DoctorSample[]>(SAMPLES_KEY, [])); }, 0); return () => window.clearTimeout(timer); }, []);
+  const [settings, setSettings] = useState<SolarForecastSettings | null>(null); const [weather, setWeather] = useState<WeatherResponse | null>(null); const [calibration, setCalibration] = useState(1); const [samples, setSamples] = useState<DoctorSample[]>([]); const [open, setOpen] = useState(false); const [ai, setAi] = useState<{ signature: string; value: DoctorExplanation } | null>(null); const [aiLoading, setAiLoading] = useState(false);
+  useEffect(() => { const timer = window.setTimeout(() => { const learning = readLocal<ForecastLearning>(LEARNING_KEY, {}); setSettings(readLocal<SolarForecastSettings | null>(SETTINGS_KEY, null)); setCalibration(Number(learning.calibration ?? 1) * Number(learning.cloudCoefficient ?? 1) * Number(learning.temperatureCoefficient ?? 1)); setSamples(readLocal<DoctorSample[]>(SAMPLES_KEY, [])); }, 0); return () => window.clearTimeout(timer); }, []);
   const fetchWeather = useCallback(async (config: SolarForecastSettings) => { const params = new URLSearchParams({ latitude: String(config.latitude), longitude: String(config.longitude), tilt: String(config.roofTilt), azimuth: String(ORIENTATION_AZIMUTH[config.orientation]) }); try { const response = await fetch(`/api/forecast/weather?${params}`, { cache: "no-store" }); if (response.ok) setWeather(await response.json() as WeatherResponse); } catch { /* deterministic unavailable state */ } }, []);
   useEffect(() => { if (!settings) return; const timer = window.setTimeout(() => void fetchWeather(settings), 0); const interval = window.setInterval(() => void fetchWeather(settings), 5 * 60_000); return () => { window.clearTimeout(timer); window.clearInterval(interval); }; }, [fetchWeather, settings]);
 
   const actualKw = parsePowerKw(data.pvPower.value, data.pvPower.unit);
   const now = new Date(data.fetchedAt).getTime();
-  const current = useMemo(() => { if (!settings || !weather?.daily?.sunrise?.[0] || !weather.daily.sunset?.[0] || !isDaylightTime(now, weather.daily.sunrise[0], weather.daily.sunset[0])) return null; const observed = mergeCurrentWeatherObservation(parseWeather(weather), weather.current, data.fetchedAt); return nearest(calculateForecast(settings, observed, weather.daily.sunrise[0], weather.daily.sunset[0], 1), now); }, [data.fetchedAt, now, settings, weather]);
+  const current = useMemo(() => { if (!settings || !weather?.daily?.sunrise?.[0] || !weather.daily.sunset?.[0] || !isDaylightTime(now, weather.daily.sunrise[0], weather.daily.sunset[0])) return null; const observed = mergeCurrentWeatherObservation(parseWeather(weather), weather.current, data.fetchedAt); const baseForecast = calculateForecast(settings, observed, weather.daily.sunrise[0], weather.daily.sunset[0], calibration); return nearest(applyRealtimeAdjustment(baseForecast, data.fetchedAt, actualKw ?? 0), now); }, [actualKw, calibration, data.fetchedAt, now, settings, weather]);
   const currentRain = (number(weather?.current?.precipitation) ?? 0) > 0 || (number(weather?.current?.rain) ?? 0) > 0 || (number(weather?.current?.showers) ?? 0) > 0;
   const previousWeather = current && weather ? parseWeather(weather).filter((hour) => new Date(hour.time).getTime() < now).at(-1) : null;
   const diagnostic = diagnoseSolar({ now, expectedAcKw: current?.outputKw ?? null, actualAcKw: actualKw, panelCapacityKw: settings ? settings.panels * settings.panelWattage / 1000 : 0, inverterMaxAcKw: settings?.maxOutputKw ?? null, irradiance: number(weather?.current?.shortwave_radiation) ?? current?.irradiance ?? null, previousIrradiance: previousWeather?.irradiance ?? null, cloudCover: number(weather?.current?.cloud_cover) ?? current?.cloudCover ?? null, temperatureC: number(weather?.current?.temperature_2m) ?? current?.temperature ?? null, rain: currentRain, weatherCode: number(weather?.current?.weather_code) ?? current?.weatherCode ?? null, gridConnected: data.gridConnected, statusCode: data.statusCode, faultCode: number(data.faultCode.value) ?? 0, warningCode: number(data.warningCode.value) ?? 0, history: samples });

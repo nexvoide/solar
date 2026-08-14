@@ -8,6 +8,7 @@ import ForecastSnapshot from "@/components/dashboard/ForecastSnapshot";
 import AIEnergyInsight from "@/components/dashboard/AIEnergyInsight";
 import AISolarDoctor from "@/components/dashboard/AISolarDoctor";
 import PredictiveSolarHealth from "@/components/dashboard/PredictiveSolarHealth";
+import UrduVoiceAssistant from "@/components/dashboard/UrduVoiceAssistant";
 import EnergyPlatformModal from "@/components/EnergyPlatformModal";
 import { useSettings } from "@/components/SettingsProvider";
 import { toKw } from "@/lib/formatPower";
@@ -196,9 +197,11 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
 
             <AIEnergyInsight data={data} />
 
+            <PredictiveSolarHealth />
+
             <AISolarDoctor data={data} />
 
-            <PredictiveSolarHealth />
+            <UrduVoiceAssistant data={data} />
 
             {showForecast && <div dir="ltr"><SolarForecastAssistant data={data} onClose={closeForecast} /></div>}
 
