@@ -36,7 +36,7 @@ function isNonZero(reading: FieldReading): boolean {
 }
 
 export default function Dashboard({ onDisconnect }: DashboardProps) {
-  const { t, dir } = useSettings();
+  const { t, dir, profile } = useSettings();
   const [data, setData] = useState<LiveData | null>(null);
   const [state, setState] = useState<FetchState>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -152,8 +152,8 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
           <div className="flex min-w-0 items-center gap-3">
             <div className="brand-mark"><span /></div>
             <div className="min-w-0">
-              <h1 className="text-base font-semibold tracking-tight text-white sm:text-lg">{t("appTitle")}</h1>
-              <p className="truncate text-[11px] text-slate-500">PV9000 · {t("dashboardSubtitle")}</p>
+              <h1 className="text-base font-semibold tracking-tight text-white sm:text-lg">{profile.ownerName}</h1>
+              <p className="truncate text-[11px] text-slate-500">{profile.siteName} · {t("dashboardSubtitle")}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">

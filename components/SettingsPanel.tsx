@@ -38,9 +38,11 @@ function OptionButton({
 }
 
 export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
-  const { language, unit, setLanguage, setUnit, t, dir } = useSettings();
+  const { language, unit, setLanguage, setUnit, profile, setProfile, t, dir } = useSettings();
   const importRef = useRef<HTMLInputElement>(null);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [ownerName, setOwnerName] = useState(profile.ownerName);
+  const [siteName, setSiteName] = useState(profile.siteName);
 
   const downloadBackup = () => {
     const backup: Record<string, unknown> = { version: 1, exportedAt: new Date().toISOString(), data: {} };
@@ -114,6 +116,15 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </div>
 
         <div className="flex-1 space-y-7 overflow-y-auto px-5 py-6 pb-[calc(2rem+var(--safe-bottom))] overscroll-contain sm:px-7 sm:py-7">
+          <fieldset>
+            <legend className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">App identity</legend>
+            <div className="space-y-3">
+              <label className="block text-xs text-slate-400">Owner name<input value={ownerName} maxLength={50} onChange={(event) => setOwnerName(event.target.value)} className="mt-2 w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-emerald-400/40" /></label>
+              <label className="block text-xs text-slate-400">House / site name<input value={siteName} maxLength={50} onChange={(event) => setSiteName(event.target.value)} className="mt-2 w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-emerald-400/40" /></label>
+              <button type="button" onClick={() => { setProfile({ ownerName, siteName }); setBackupStatus("App identity saved."); }} className="w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-[#06120d] hover:bg-emerald-300">Save identity</button>
+            </div>
+          </fieldset>
+
           <fieldset>
             <legend className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
               {t("language")}

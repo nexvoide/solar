@@ -6,10 +6,28 @@ import { consumeVoiceQuota, voiceLimits } from "@/lib/ai/voice-quota";
 
 export const dynamic = "force-dynamic";
 const DEFAULT_FREE_MODEL = "gemini-3.5-flash-lite";
+const DEFAULT_FREE_TTS_MODEL = "gemini-3.1-flash-tts-preview";
 const MAX_AUDIO_BYTES = 7_000_000;
 
 function clean(value: unknown, max: number): string | null { if (typeof value !== "string") return null; const result = value.trim().replace(/\s+/g, " "); return result && result.length <= max ? result : null; }
 function userId(request: Request): string | null { const state = readSessionCookie(request.headers.get("cookie")); if (!state) return null; return crypto.createHash("sha256").update(`${state.connection.pn}:${state.device.sn}`).digest("hex"); }
+
+async function synthesizeNoor(apiKey: string, transcript: string, language: string) {
+  const model = process.env.GEMINI_TTS_MODEL ?? DEFAULT_FREE_TTS_MODEL;
+  if (model !== DEFAULT_FREE_TTS_MODEL && process.env.GEMINI_VOICE_FREE_TIER_VERIFIED !== "true") return null;
+  const style = language === "urdu" ? "Speak natural conversational Pakistani Urdu with clear pronunciation." : language === "roman_urdu" ? "Speak natural conversational Roman Urdu with a Pakistani accent; pronounce Urdu words as Urdu, not English." : language === "mixed" ? "Speak naturally in mixed Pakistani Urdu and English, switching smoothly between both." : "Speak clear, warm conversational English.";
+  const body = { model, input: `Synthesize only the transcript below. Do not read these directions aloud. Use a warm, friendly female energy-assistant voice at a relaxed natural pace. ${style}\n\nTRANSCRIPT:\n${transcript}`, response_format: { type: "audio" }, generation_config: { speech_config: [{ voice: process.env.GEMINI_TTS_VOICE ?? "Kore" }] } };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(20_000), headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey, "Api-Revision": "2026-05-20" }, body: JSON.stringify(body) });
+      if (!response.ok) { console.error("[Noor Voice] Gemini TTS failed", response.status); continue; }
+      const result = await response.json() as { steps?: Array<{ content?: Array<{ type?: string; data?: string; sample_rate?: number; mime_type?: string }> }> };
+      const audio = result.steps?.flatMap((step) => step.content ?? []).find((content) => content.type === "audio" && content.data);
+      if (audio?.data) return { data: audio.data, sampleRate: audio.sample_rate ?? 24_000, mimeType: audio.mime_type ?? "audio/pcm" };
+    } catch (error) { console.error("[Noor Voice] Gemini TTS error", error instanceof Error ? error.message : "unknown"); }
+  }
+  return null;
+}
 
 function configuredModel(): { model: string; freeTierVerified: boolean } {
   const model = process.env.GEMINI_VOICE_MODEL ?? DEFAULT_FREE_MODEL;
@@ -27,6 +45,13 @@ export async function POST(request: Request) {
   if (!configured.freeTierVerified) return NextResponse.json({ error: "Free-tier compatibility needs to be verified.", code: "model_not_verified" }, { status: 503 });
   let body: Record<string, unknown>;
   try { body = await request.json() as Record<string, unknown>; } catch { return NextResponse.json({ error: "Invalid request" }, { status: 400 }); }
+  if (body.action === "synthesize") {
+    const transcript = clean(body.transcript, 900);
+    const language = clean(body.language, 20) ?? "mixed";
+    if (!transcript) return NextResponse.json({ error: "Transcript is required" }, { status: 400 });
+    const speech = await synthesizeNoor(apiKey, transcript, language);
+    return speech ? NextResponse.json({ speech }, { headers: { "Cache-Control": "no-store" } }) : NextResponse.json({ error: "Natural voice is temporarily unavailable" }, { status: 503 });
+  }
   const sessionId = clean(body.sessionId, 100); const duration = typeof body.durationSeconds === "number" && Number.isFinite(body.durationSeconds) ? body.durationSeconds : 0;
   if (!sessionId || duration < 0) return NextResponse.json({ error: "Invalid voice session" }, { status: 400 });
   const configuredLimits = voiceLimits();
